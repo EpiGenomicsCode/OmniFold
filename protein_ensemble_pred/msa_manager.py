@@ -6,11 +6,9 @@ import tempfile # For temporary FASTA
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, List
 
-# Assuming ConfigGenerator and JobInput are available
 from .config_generator import ConfigGenerator
 from .util.definitions import JobInput, SequenceInfo
 
-# Configure logging
 logger = logging.getLogger(__name__)
 
 
