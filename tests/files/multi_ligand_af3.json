@@ -1,0 +1,27 @@
+{
+  "name": "multi_ligand",
+  "dialect": "alphafold3",
+  "version": 1,
+  "modelSeeds": [
+    0
+  ],
+  "sequences": [
+    {
+      "protein": {
+        "id": "A",
+        "sequence": "NPMVCPETLMTIVSKHVYESFYWSCHGNMCEKEDSNADTTSCNRVFGKCAESDFYCVKAYKDWSNEVMDMVWWCEHHKKLHIEWHWMKMASHDQHNMSYDCDLHHHRQDRYNTWCEDMGCFWCPQAIVNFEKLLQNQWDEILLITFILWLGRESHCKSWKKYSNNALAVVKRPEREGDRMNASMELHTQCPQNIWFVCNKEFTFYCYHGEIDWRGIGPTMPRYDAPGRWFRGTGWLENKPHMNYWREALD"
+      }
+    },
+    {
+      "ligand": {
+        "id": [
+          "B",
+          "C"
+        ],
+        "ccdCodes": [
+          "HEM"
+        ]
+      }
+    }
+  ]
+}

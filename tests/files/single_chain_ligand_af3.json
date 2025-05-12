@@ -1,0 +1,24 @@
+{
+  "name": "single_chain_ligand",
+  "dialect": "alphafold3",
+  "version": 1,
+  "modelSeeds": [
+    0
+  ],
+  "sequences": [
+    {
+      "protein": {
+        "id": "A",
+        "sequence": "HGYTHPNVYCHPQDAAIIGNRNAGLILIDFEHTSPQMMAAFYRLVSGDGWQTYEGSFLFMLYPGMALVQVRNNQPWLGFFDRLLSNNQTCGLDMNVAANYSPQAGEYCVYEICTTCMWHVYYWDDMYKITANWDPFVRRLMSQNASWGSANNRCLKFTGRAKEPMNYFAKDEMLMSMRSPQSWIMERKDHRQFWCRQYKI"
+      }
+    },
+    {
+      "ligand": {
+        "id": "B",
+        "ccdCodes": [
+          "ATP"
+        ]
+      }
+    }
+  ]
+}

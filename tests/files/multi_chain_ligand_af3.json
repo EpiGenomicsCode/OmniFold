@@ -1,0 +1,28 @@
+{
+  "name": "multi_chain_ligand",
+  "dialect": "alphafold3",
+  "version": 1,
+  "modelSeeds": [
+    0
+  ],
+  "sequences": [
+    {
+      "protein": {
+        "id": "A",
+        "sequence": "RGQAKKKHFVECYLRPWYYFQPGNSEPTHGPKIYDHLYIPCCEKMMDDHLIIYMKRLSSPSEFWLWMKFCAFWDVKVLRFAFMVCLININCDTGWFWAVFSRSKHMWRCRVQTQARDIRDKVKVWFTMVWLMDEMAGKKS"
+      }
+    },
+    {
+      "protein": {
+        "id": "B",
+        "sequence": "ETNIHSLGQDCWYYLQESSHERCHPARCFSSGCKYTCQFTSYTEHQCCMDDKMTTGEWAPMLNYEGNQFGHTEEHVVRHIHLHSSRCLATFAPYVQNEFDQDFVEILTNDMSNSCPACLLRRQPQHFVPC"
+      }
+    },
+    {
+      "ligand": {
+        "id": "C",
+        "smiles": "C1=CC=CC=C1C(=O)NCC2=NC3=CC=CC=C3N2"
+      }
+    }
+  ]
+}
