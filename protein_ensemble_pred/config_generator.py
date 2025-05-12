@@ -123,7 +123,6 @@ class ConfigGenerator:
                         # Setting to empty string signifies we want to use the unpairedMsa but run pairedMSA-free.
                         # If no msa_path_for_chain, let AF3 pipeline handle it (or run MSA-free if pipeline disabled)
                         # We assume pairedMsa is handled by the AF3 data pipeline if run, or not needed otherwise.
-                        # If we *don't* provide unpairedMsaPath, we shouldn't provide pairedMsa either.
                         protein_chain_args["pairedMsaPath"] = None # Explicitly null if not using our MSA?
                         protein_chain_args["pairedMsa"] = "" # Crucial: Set pairedMsa to empty string if unpairedMsaPath is provided
                     else:
@@ -167,11 +166,10 @@ class ConfigGenerator:
                 name=job_input.name_stem,
                 modelSeeds=model_seeds,
                 sequences=af3_sequences,
-                bondedAtomPairs=job_input.get("bonded_atom_pairs") # Pass bonds if parsed
+                bondedAtomPairs=job_input.get("bonded_atom_pairs") 
                 # userCCD/userCCDPath would need to be handled if needed
             )
 
-            # Use model_dump_json for correct serialization according to Pydantic model aliases
             json_string = af3_input_data.model_dump_json(indent=2, by_alias=True, exclude_none=True)
             
             with open(json_file_path, "w") as f:
@@ -258,7 +256,6 @@ class ConfigGenerator:
 
         boltz_config["sequences"] = sequences_list
 
-        # Add constraints if provided in job_input
         if job_input.get("constraints"):
             boltz_config["constraints"] = job_input["constraints"]
         
@@ -277,41 +274,3 @@ class ConfigGenerator:
             logger.error(f"An unexpected error occurred while writing Boltz YAML file '{output_filepath}': {e}", exc_info=True)
             # if output_filepath.exists(): output_filepath.unlink()
             return None
-
-# Example Usage (commented out)
-# if __name__ == '__main__':
-#     from input_handler import InputHandler
-#     test_handler = InputHandler()
-#     # Test with FASTA
-#     # ... (fasta test setup) ...
-#     # job_fasta = test_handler.parse_input_file("test.fasta")
-#     # if job_fasta:
-#     #     cg = ConfigGenerator()
-#     #     cg.generate_af3_json_from_job_input(job_fasta, "./test_output")
-
-#     # Test with an input AF3 JSON that has MSA paths
-#     dummy_af3_input_content = {
-#         "name": "complex_with_msa",
-#         "modelSeeds": [456],
-#         "sequences": [
-#             {"protein": {"id": "P1", "sequence": "MPEPTIDE", "unpairedMsaPath": "msas/p1_msa.a3m"}},
-#             {"rna": {"id": "R1", "sequence": "ACGUACGU", "unpairedMsaPath": "msas/r1_msa.sto"}} # Example diff format
-#         ],
-#         "dialect": "alphafold3",
-#         "version": 1
-#     }
-#     input_json_path = "_test_input_af3.json"
-#     with open(input_json_path, "w") as f: json.dump(dummy_af3_input_content, f)
-    
-#     job_from_json = test_handler.parse_input_file(input_json_path)
-#     if job_from_json:
-#         print(f"Parsed from JSON: {job_from_json.name_stem}, raw_type: {job_from_json.raw_input_type}")
-#         print(f"Input MSA paths found: {job_from_json.input_msa_paths}")
-#         cg = ConfigGenerator()
-#         generated_json_path = cg.generate_af3_json_from_job_input(job_from_json, "./test_output_json_input")
-#         if generated_json_path and os.path.exists(generated_json_path):
-#             print(f"Generated JSON: {generated_json_path}")
-#             with open(generated_json_path, 'r') as f_read: print(f_read.read()) # Verify MSA paths are included
-#             # os.remove(generated_json_path)
-#             # if not os.listdir("./test_output_json_input"): os.rmdir("./test_output_json_input")
-#     os.remove(input_json_path) 
