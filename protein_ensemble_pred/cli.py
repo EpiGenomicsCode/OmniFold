@@ -236,7 +236,6 @@ def main():
 
     # --- Prepare Configuration for Orchestrator ---
     # This config will be passed to all modules.
-    # Paths should be resolved to absolute paths for robustness.
     config = {
         "input_file": os.path.abspath(args.input_file),
         "output_dir": os.path.abspath(args.output_dir),
@@ -284,8 +283,7 @@ def main():
         "boltz_write_full_pde": args.boltz_write_full_pde,
         "boltz_output_format": args.boltz_output_format,
 
-        # GPU configuration would go here, e.g. from --num_gpus or auto-detection
-        # For now, Orchestrator/Runner will handle GPU detection/assignment
+        # GPU detection/assignment  needs to go here.
     }
     
     # Add a check for required paths within the config that Orchestrator/submodules need
@@ -304,13 +302,8 @@ def main():
                  logger.error(f"Required path does not exist: {config[path_key]} (from --{path_key.replace('_sif_path','-sif-path').replace('_dir','-dir')})")
         sys.exit(1)
 
-    # --colabfold_msa_server_url is optional. If provided, it will be passed to Boltz.
-    # If not provided and msa_method is colabfold, Boltz will use its internal default with --use_msa_server.
-    # No specific check needed here now, MSAManager will handle passing the URL if present.
-
     logger.info("Configuration prepared. Initializing Orchestrator.")
     
-    # --- Initialize and Run Orchestrator ---
     try:
         orchestrator = Orchestrator(config=config, output_dir=config["output_dir"])
         orchestrator.run_pipeline(input_file_path=config["input_file"])
