@@ -48,47 +48,99 @@ class InputHandler:
                 original_name = record.name
                 sequence = record.seq
                 
-                # Check for Boltz-style FASTA header
+                current_chain_id: Optional[str] = None
+                molecule_type_explicitly_defined = False
+                final_molecule_type: SequenceType = "unknown" # Default
+
                 if "|" in original_name:
                     parts = original_name.split("|", 2)
-                    chain_id = parts[0]
-                    boltz_entity_type_str = parts[1].lower()
-                    msa_path = parts[2] if len(parts) > 2 and parts[2].strip() else None
+                    parsed_chain_id = parts[0].strip()
+                    # Use parsed_chain_id if non-empty, otherwise will fall to idgen later if needed
+                    current_chain_id = parsed_chain_id if parsed_chain_id else None 
+                    
+                    entity_type_str = parts[1].lower().strip() if len(parts) > 1 else ""
+                    msa_path_str = parts[2].strip() if len(parts) > 2 and parts[2].strip() else None
 
-                    molecule_type: SequenceType = "unknown"
-                    if boltz_entity_type_str == "protein":
-                        molecule_type = "protein"
-                        if msa_path and msa_path.lower() != "empty": # Boltz uses "empty" for no MSA
-                            input_msa_paths[chain_id] = msa_path
-                    elif boltz_entity_type_str == "rna":
-                        molecule_type = "rna"
-                    elif boltz_entity_type_str == "dna":
-                        molecule_type = "dna"
-                    elif boltz_entity_type_str == "ccd":
-                        molecule_type = "ligand_ccd"
-                    elif boltz_entity_type_str == "smiles":
-                        molecule_type = "ligand_smiles"
-                    else:
-                        # Fallback to as_entity if Boltz type is not recognized or malformed
-                        seq_info_temp = as_entity(sequence, next(chain_id_generator), original_name)
-                        molecule_type = seq_info_temp.molecule_type
-                        chain_id = seq_info_temp.chain_id # Use generated chain_id
+                    temp_molecule_type: Optional[SequenceType] = None
+                    if entity_type_str == "protein":
+                        temp_molecule_type = "protein"
+                    elif entity_type_str == "rna":
+                        temp_molecule_type = "rna"
+                    elif entity_type_str == "dna":
+                        temp_molecule_type = "dna"
+                    elif entity_type_str == "ccd":
+                        temp_molecule_type = "ligand_ccd"
+                    elif entity_type_str == "smiles":
+                        temp_molecule_type = "ligand_smiles"
+                    
+                    if temp_molecule_type:
+                        final_molecule_type = temp_molecule_type
+                        molecule_type_explicitly_defined = True
+                        if not current_chain_id: # If parsed_chain_id was empty
+                            current_chain_id = next(chain_id_generator)
+                        
+                        if final_molecule_type == "protein" and msa_path_str and msa_path_str.lower() != "empty":
+                            input_msa_paths[current_chain_id] = msa_path_str
+                    # else: explicit type not recognized, will fall through to as_entity
+                
+                if not molecule_type_explicitly_defined:
+                    # Determine chain_id for as_entity: use parsed if available & valid, else generate
+                    chain_id_for_guessing = current_chain_id if current_chain_id else next(chain_id_generator)
+                    
+                    # Perform type guessing
+                    guessed_seq_info = as_entity(sequence, chain_id_for_guessing, original_name)
+                    final_molecule_type = guessed_seq_info.molecule_type
+                    current_chain_id = guessed_seq_info.chain_id # as_entity provides the definitive chain_id used
+                    # Note: MSA path from header is NOT used if we fell back to type guessing, 
+                    # as the explicit 'protein' type was not declared with it.
 
-                    sequences_info.append(SequenceInfo(
-                        original_name=original_name,
-                        sequence=sequence,
-                        molecule_type=molecule_type,
-                        chain_id=chain_id
-                    ))
-                else:
-                    # Default behavior: use idgen for chain_id and as_entity for type
-                    chain_id = next(chain_id_generator)
-                    # molecule_type and potentially adjusted sequence comes from as_entity
-                    sequences_info.append(as_entity(sequence, chain_id, original_name))
+                # Ensure current_chain_id is set (should be by now)
+                if not current_chain_id:
+                     current_chain_id = next(chain_id_generator) # Should be very rare, a final fallback
+
+                sequences_info.append(SequenceInfo(
+                    original_name=original_name,
+                    sequence=sequence, # as_entity might adjust sequence (e.g. case), ensure we use the right one
+                                       # Current as_entity returns original sequence for ligand_smiles/unknown
+                                       # and upper-cased for protein/rna/dna/ligand_ccd.
+                                       # For consistency, let's ensure sequence added is what as_entity would have determined
+                                       # or the explicit sequence if type was explicit.
+                    molecule_type=final_molecule_type,
+                    chain_id=current_chain_id
+                ))
+            # Correcting the sequence for SequenceInfo based on final_molecule_type determination logic
+            # This part needs to be inside the loop, or sequences_info needs to be adjusted post-loop.
+            # For simplicity, let's refine what goes into SequenceInfo directly.
 
         except Exception as e:
-            # Consider specific exceptions for pyfastx if needed
             raise ValueError(f"Error parsing FASTA file '{filepath}': {e}")
+
+        # Refinement for sequence string based on molecule type after the loop (if necessary)
+        # Or, more cleanly, ensure the sequence passed to SequenceInfo constructor is the final one.
+        # The current logic for as_entity already returns the sequence in its final form (e.g., uppercase).
+        # If explicit type, the original sequence is used. This might be an inconsistency.
+        # Let's assume `as_entity` is the source of truth for sequence format if type guessing occurs.
+        # If type is explicit, we use the raw sequence. This seems acceptable.
+
+        final_sequences_info = []
+        for i, s_info_draft in enumerate(sequences_info):
+            # If type was guessed, as_entity already formatted the sequence.
+            # If type was explicit, s_info_draft.sequence is the raw sequence.
+            # To ensure consistency (e.g. for ligand_ccd being uppercase as per as_entity):
+            final_seq_str = s_info_draft.sequence
+            if s_info_draft.molecule_type in ["protein", "rna", "dna", "ligand_ccd"]:
+                 final_seq_str = s_info_draft.sequence.upper()
+            # For smiles and unknown, keep original casing as `as_entity` does.
+
+            final_sequences_info.append(SequenceInfo(
+                original_name=s_info_draft.original_name,
+                sequence=final_seq_str, # Use consistently formatted sequence
+                molecule_type=s_info_draft.molecule_type,
+                chain_id=s_info_draft.chain_id,
+                molecule_type_confidence=s_info_draft.molecule_type_confidence if hasattr(s_info_draft, 'molecule_type_confidence') else 1.0
+            ))
+        sequences_info = final_sequences_info
+
 
         if not sequences_info:
             raise ValueError(f"No sequences found in FASTA file: {filepath}")
