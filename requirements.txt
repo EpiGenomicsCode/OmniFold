@@ -1,0 +1,3 @@
+pyfastx
+PyYAML
+pydantic 

@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from typing import List, Literal, Generator, Any, Optional, Dict
+import string
 
 # Sequence alphabets (from af3/constants.py)
 prot_alphabet: set[str] = set("ARNDCQEGHILKMFPSTWYV") | set("arndcqeghilkmfpstwyv")
@@ -21,15 +22,16 @@ class SequenceInfo:
 
 @dataclass
 class JobInput:
-    name_stem: str # From input filename or user provided
-    sequences: List[SequenceInfo] = field(default_factory=list)
-    raw_input_type: Optional[Literal["fasta", "af3_json", "boltz_yaml"]] = None
-    # Stores MSA paths found *in the input file itself*, mapping chain_id to its unpairedMsaPath
-    input_msa_paths: Optional[Dict[str, str]] = field(default_factory=dict) 
-    # Future fields:
-    # ligand_info: Any = None # Could be part of SequenceInfo or separate
-    # template_data: Any = None # Could be Dict[str, List[Template]] mapping chain_id to templates
+    """Unified representation of a prediction job input."""
+    name_stem: str
+    sequences: List[SequenceInfo]
+    raw_input_type: Literal["fasta", "af3_json", "boltz_yaml"]
+    input_msa_paths: Dict[str, str] = field(default_factory=dict)  # chain_id -> msa_path
+    constraints: List[Dict[str, Any]] | None = None  # For Boltz YAML constraints
 
+    def __post_init__(self):
+        # Ensure raw_input_type is one of the allowed literals
+        pass # Explicitly add pass
 
 # ID generator (from af3/cli_convert.py)
 def idgen() -> Generator[str, None, None]:

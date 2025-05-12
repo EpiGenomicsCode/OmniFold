@@ -2,6 +2,8 @@ import json
 import os
 import random
 from typing import List, Optional, Dict, Any
+import yaml
+from pathlib import Path
 
 from .util.definitions import JobInput, SequenceInfo, SequenceType
 from .af3_models import (
@@ -17,9 +19,9 @@ class ConfigGenerator:
     def generate_af3_json_from_job_input(
         self, 
         job_input: JobInput,
-        output_dir: str,
+        output_dir: Path,
         # msa_results: Optional[Dict[str, str]] = None # Future: from MSAManager {chain_id: msa_path}
-    ) -> Optional[str]:
+    ) -> Path:
         """
         Generates an AlphaFold3 JSON input file from a JobInput object.
         Prioritizes MSA paths from job_input.input_msa_paths if available.
@@ -31,15 +33,16 @@ class ConfigGenerator:
             # msa_results: Optional dictionary mapping chain_id to its generated MSA file path.
 
         Returns:
-            Path to the generated JSON file, or None if generation failed.
+            Path to the generated JSON file.
+        Raises:
+            ValueError: If JobInput is empty or contains no sequences, or no valid sequences processed.
+            IOError: If there's an error writing the JSON file.
         """
         if not job_input or not job_input.sequences:
-            print("Error: JobInput is empty or contains no sequences.")
-            return None
+            raise ValueError("JobInput is empty or contains no sequences.")
 
-        os.makedirs(output_dir, exist_ok=True)
-        # Use a consistent output naming, even if input was JSON
-        json_file_path = os.path.join(output_dir, f"{job_input.name_stem}_af3_generated.json") 
+        output_dir.mkdir(parents=True, exist_ok=True)
+        json_file_path = output_dir / f"{job_input.name_stem}_af3_generated.json"
 
         try:
             af3_sequences = []
@@ -83,8 +86,7 @@ class ConfigGenerator:
                     continue
             
             if not af3_sequences:
-                print("Error: No valid sequences could be processed for AF3 JSON.")
-                return None
+                raise ValueError("No valid sequences could be processed for AF3 JSON.")
 
             model_seeds = [random.randint(1, 100000)]
 
@@ -108,7 +110,7 @@ class ConfigGenerator:
             # For now, always creating a new "_generated.json" for clarity of what this function produces.
             # The Orchestrator can later decide if it needs to use an original input JSON directly.
             if job_input.raw_input_type == "af3_json":
-                original_json_path = os.path.join(output_dir, f"{job_input.name_stem}.json") # Assuming original might be needed
+                original_json_path = output_dir / f"{job_input.name_stem}.json" # Assuming original might be needed
                 # This part is tricky: if the input JSON was data-rich (e.g. _data.json from AF3 pipeline)
                 # we might want to use it directly. The current logic re-builds it. 
                 # PRD: "AF3 JSON ... the handler will extract the sequences (and any provided alignments or templates) 
@@ -119,20 +121,92 @@ class ConfigGenerator:
 
             return json_file_path
 
-        except Exception as e:
-            print(f"Error generating AlphaFold3 JSON for {job_input.name_stem}: {e}")
-            return None
+        except ValueError as ve: # Catch specific ValueError from pre-checks
+            raise ve 
+        except Exception as e: # Broad catch for Pydantic errors, file IO, etc.
+            raise IOError(f"Error generating AlphaFold3 JSON for {job_input.name_stem} at {json_file_path}: {e}")
 
     def generate_boltz_yaml_from_job_input(
         self,
         job_input: JobInput,
-        output_dir: str
-    ) -> Optional[str]:
+        output_dir: Path
+    ) -> Path:
         """
-        Placeholder for generating Boltz-1 YAML input file.
+        Generates a Boltz-1 YAML configuration file from a JobInput object.
+        The YAML will be saved in the specified output_dir.
+        Returns the path to the generated YAML file.
         """
-        print(f"Boltz-1 YAML generation for {job_input.name_stem} not yet implemented.")
-        return None
+        boltz_config = {"version": 1, "sequences": []}
+        sequences_list = []
+
+        for seq_info in job_input.sequences:
+            entity = {}
+            if seq_info.molecule_type == "protein":
+                protein_data = {
+                    "id": seq_info.chain_id,
+                    "sequence": seq_info.sequence
+                }
+                # Check if an MSA path was provided in the input for this specific chain
+                if seq_info.chain_id in job_input.input_msa_paths:
+                    protein_data["msa"] = job_input.input_msa_paths[seq_info.chain_id]
+                # else: Boltz will attempt to generate MSA if not provided or run single sequence
+                entity["protein"] = protein_data
+            elif seq_info.molecule_type == "rna":
+                entity["rna"] = {
+                    "id": seq_info.chain_id,
+                    "sequence": seq_info.sequence
+                }
+            elif seq_info.molecule_type == "dna":
+                entity["dna"] = {
+                    "id": seq_info.chain_id,
+                    "sequence": seq_info.sequence
+                }
+            elif seq_info.molecule_type == "ligand_smiles":
+                entity["ligand"] = {
+                    "id": seq_info.chain_id,
+                    "smiles": seq_info.sequence
+                }
+            elif seq_info.molecule_type == "ligand_ccd":
+                entity["ligand"] = {
+                    "id": seq_info.chain_id,
+                    "ccd": seq_info.sequence
+                }
+            elif seq_info.molecule_type == "unknown":
+                # PRD: "Unknown" sequence type handled with a warning by ConfigGenerator
+                # For Boltz, it's unclear how it handles "unknown". 
+                # We will skip adding it to the Boltz YAML and log a warning.
+                print(f"Warning: Sequence '{seq_info.original_name}' (chain {seq_info.chain_id}) has an unknown molecule type and will be skipped for Boltz YAML generation.")
+                continue # Skip this sequence for Boltz
+            else:
+                # Should not happen if SequenceType is strictly followed
+                print(f"Warning: Unhandled molecule type '{seq_info.molecule_type}' for sequence '{seq_info.original_name}'. Skipping for Boltz YAML.")
+                continue
+            
+            sequences_list.append(entity)
+
+        if not sequences_list:
+            raise ValueError("No suitable sequences found in JobInput to generate Boltz YAML.")
+
+        boltz_config["sequences"] = sequences_list
+
+        if job_input.constraints:
+            boltz_config["constraints"] = job_input.constraints
+        
+        # Ensure output directory exists
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        output_filename = f"{job_input.name_stem}_boltz_generated.yaml"
+        output_filepath = output_dir / output_filename
+
+        try:
+            with open(output_filepath, 'w') as f:
+                yaml.dump(boltz_config, f, sort_keys=False, default_flow_style=False, indent=2)
+        except yaml.YAMLError as e:
+            raise IOError(f"Error writing Boltz YAML file '{output_filepath}': {e}")
+        except Exception as e:
+            raise IOError(f"An unexpected error occurred while writing Boltz YAML file '{output_filepath}': {e}")
+
+        return output_filepath
 
 
 # Example Usage (commented out)
