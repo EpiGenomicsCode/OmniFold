@@ -3,8 +3,7 @@ import os
 import logging
 import sys
 
-# Placeholder for actual orchestrator
-# from .orchestrator import Orchestrator
+from .orchestrator import Orchestrator
 
 def setup_logging(log_level_str: str):
     """Configures logging for the application."""
@@ -227,6 +226,14 @@ def main():
     args = parser.parse_args()
     logger = setup_logging(args.log_level)
 
+    # Create the output directory if it doesn't exist
+    try:
+        os.makedirs(args.output_dir, exist_ok=True)
+        logger.info(f"Ensured output directory exists: {args.output_dir}")
+    except OSError as e:
+        logger.error(f"Failed to create output directory {args.output_dir}: {e}")
+        sys.exit(1) # Exit if we can\'t create the output directory
+
     # --- Prepare Configuration for Orchestrator ---
     # This config will be passed to all modules.
     # Paths should be resolved to absolute paths for robustness.
@@ -280,6 +287,37 @@ def main():
         # GPU configuration would go here, e.g. from --num_gpus or auto-detection
         # For now, Orchestrator/Runner will handle GPU detection/assignment
     }
+    
+    # Add a check for required paths within the config that Orchestrator/submodules need
+    required_paths = [
+        "alphafold3_sif_path", 
+        "boltz1_sif_path", 
+        "alphafold3_model_weights_dir", 
+        # alphafold3_database_dir is optional for prediction, required only for AF3 MSA gen
+    ]
+    missing_paths = [p for p in required_paths if not config.get(p) or not os.path.exists(config[p])]
+    if missing_paths:
+        for path_key in missing_paths:
+            if not config.get(path_key):
+                 logger.error(f"Missing required configuration parameter: --{path_key.replace('_sif_path','-sif-path').replace('_dir','-dir')}") # Attempt to match arg name
+            else:
+                 logger.error(f"Required path does not exist: {config[path_key]} (from --{path_key.replace('_sif_path','-sif-path').replace('_dir','-dir')})")
+        sys.exit(1)
+
+    # --colabfold_msa_server_url is optional. If provided, it will be passed to Boltz.
+    # If not provided and msa_method is colabfold, Boltz will use its internal default with --use_msa_server.
+    # No specific check needed here now, MSAManager will handle passing the URL if present.
+
+    logger.info("Configuration prepared. Initializing Orchestrator.")
+    
+    # --- Initialize and Run Orchestrator ---
+    try:
+        orchestrator = Orchestrator(config=config, output_dir=config["output_dir"])
+        orchestrator.run_pipeline(input_file_path=config["input_file"])
+        logger.info("Pipeline execution finished.")
+    except Exception as e:
+        logger.error(f"Pipeline execution failed: {e}", exc_info=True) # Log traceback
+        sys.exit(1)
 
 
 if __name__ == "__main__":

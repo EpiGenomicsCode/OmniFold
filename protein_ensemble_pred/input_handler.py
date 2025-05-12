@@ -4,354 +4,376 @@ import pyfastx
 from typing import List, Optional, Dict, Union
 from pathlib import Path
 import yaml # Added import
+import logging
 
 from .util.definitions import JobInput, SequenceInfo, idgen, as_entity, SequenceType
 from .af3_models import Af3Input as Af3PydanticModel # Rename to avoid confusion with function
 from .af3_models import Protein, RNA, DNA, Ligand # To identify sequence item types
+
+logger = logging.getLogger(__name__)
 
 class InputHandler:
     def __init__(self):
         """Initializes the InputHandler."""
         pass
 
-    def parse_input_file(self, filepath_str: str) -> JobInput:
+    def parse_input(self, input_filepath: str) -> Optional[JobInput]:
         """
-        Parses the input file (FASTA, AF3 JSON, or Boltz YAML) and returns a JobInput object.
+        Parses the input file and returns a JobInput object.
+
+        Args:
+            input_filepath: Path to the input file.
+
+        Returns:
+            A JobInput object if parsing is successful, None otherwise.
         """
-        filepath = Path(filepath_str)
-        if not filepath.exists():
-            raise FileNotFoundError(f"Input file not found: {filepath}")
+        input_path = Path(input_filepath)
+        if not input_path.is_file():
+            logger.error(f"Input file not found: {input_filepath}")
+            return None
 
-        name_stem = filepath.stem
-        file_extension = filepath.suffix.lower()
-
-        if file_extension in [".fasta", ".fas", ".fa", ".fna", ".ffn", ".faa", ".frn"]:
-            return self._parse_fasta_file(filepath, name_stem)
-        elif file_extension == ".json":
-            # Could be AF3 JSON. Add more checks if other JSON types are expected.
-            return self._parse_af3_json_file(filepath, name_stem)
-        elif file_extension in [".yaml", ".yml"]:
-            return self._parse_boltz_yaml_file(filepath, name_stem)
-        else:
-            raise ValueError(
-                f"Unsupported file extension: '{file_extension}'. "
-                "Please provide a FASTA (.fasta, .fa, etc.), AF3 JSON (.json), or Boltz YAML (.yaml, .yml) file."
-            )
-
-    def _parse_fasta_file(self, filepath: Path, name_stem: str) -> JobInput:
-        sequences_info: List[SequenceInfo] = []
-        input_msa_paths: Dict[str, str] = {}
-        chain_id_generator = idgen()
+        file_extension = input_path.suffix.lower()
+        name_stem = input_path.stem
 
         try:
-            for record in pyfastx.Fasta(str(filepath)):
-                original_name = record.name
-                sequence = record.seq
-                
-                current_chain_id: Optional[str] = None
-                molecule_type_explicitly_defined = False
-                final_molecule_type: SequenceType = "unknown" # Default
-
-                if "|" in original_name:
-                    parts = original_name.split("|", 2)
-                    parsed_chain_id = parts[0].strip()
-                    # Use parsed_chain_id if non-empty, otherwise will fall to idgen later if needed
-                    current_chain_id = parsed_chain_id if parsed_chain_id else None 
-                    
-                    entity_type_str = parts[1].lower().strip() if len(parts) > 1 else ""
-                    msa_path_str = parts[2].strip() if len(parts) > 2 and parts[2].strip() else None
-
-                    temp_molecule_type: Optional[SequenceType] = None
-                    if entity_type_str == "protein":
-                        temp_molecule_type = "protein"
-                    elif entity_type_str == "rna":
-                        temp_molecule_type = "rna"
-                    elif entity_type_str == "dna":
-                        temp_molecule_type = "dna"
-                    elif entity_type_str == "ccd":
-                        temp_molecule_type = "ligand_ccd"
-                    elif entity_type_str == "smiles":
-                        temp_molecule_type = "ligand_smiles"
-                    
-                    if temp_molecule_type:
-                        final_molecule_type = temp_molecule_type
-                        molecule_type_explicitly_defined = True
-                        if not current_chain_id: # If parsed_chain_id was empty
-                            current_chain_id = next(chain_id_generator)
-                        
-                        if final_molecule_type == "protein" and msa_path_str and msa_path_str.lower() != "empty":
-                            input_msa_paths[current_chain_id] = msa_path_str
-                    # else: explicit type not recognized, will fall through to as_entity
-                
-                if not molecule_type_explicitly_defined:
-                    # Determine chain_id for as_entity: use parsed if available & valid, else generate
-                    chain_id_for_guessing = current_chain_id if current_chain_id else next(chain_id_generator)
-                    
-                    # Perform type guessing
-                    guessed_seq_info = as_entity(sequence, chain_id_for_guessing, original_name)
-                    final_molecule_type = guessed_seq_info.molecule_type
-                    current_chain_id = guessed_seq_info.chain_id # as_entity provides the definitive chain_id used
-                    # Note: MSA path from header is NOT used if we fell back to type guessing, 
-                    # as the explicit 'protein' type was not declared with it.
-
-                # Ensure current_chain_id is set (should be by now)
-                if not current_chain_id:
-                     current_chain_id = next(chain_id_generator) # Should be very rare, a final fallback
-
-                sequences_info.append(SequenceInfo(
-                    original_name=original_name,
-                    sequence=sequence, # as_entity might adjust sequence (e.g. case), ensure we use the right one
-                                       # Current as_entity returns original sequence for ligand_smiles/unknown
-                                       # and upper-cased for protein/rna/dna/ligand_ccd.
-                                       # For consistency, let's ensure sequence added is what as_entity would have determined
-                                       # or the explicit sequence if type was explicit.
-                    molecule_type=final_molecule_type,
-                    chain_id=current_chain_id
-                ))
-            # Correcting the sequence for SequenceInfo based on final_molecule_type determination logic
-            # This part needs to be inside the loop, or sequences_info needs to be adjusted post-loop.
-            # For simplicity, let's refine what goes into SequenceInfo directly.
-
+            if file_extension in [".fasta", ".fa", ".fna", ".faa"]:
+                logger.info(f"Parsing FASTA file: {input_filepath}")
+                return self._parse_fasta(input_path, name_stem)
+            elif file_extension == ".json":
+                logger.info(f"Attempting to parse as AlphaFold3 JSON: {input_filepath}")
+                return self._parse_af3_json(input_path, name_stem)
+            elif file_extension in [".yaml", ".yml"]:
+                 logger.info(f"Attempting to parse as Boltz YAML: {input_filepath}")
+                 # Add placeholder or call specific parser if Boltz YAML is distinct
+                 return self._parse_boltz_yaml(input_path, name_stem)
+            else:
+                logger.error(f"Unsupported file extension: {file_extension}. Please use FASTA, AF3 JSON, or Boltz YAML.")
+                return None
         except Exception as e:
-            raise ValueError(f"Error parsing FASTA file '{filepath}': {e}")
+            logger.error(f"Failed to parse input file {input_filepath}: {e}", exc_info=True)
+            return None
 
-        # Refinement for sequence string based on molecule type after the loop (if necessary)
-        # Or, more cleanly, ensure the sequence passed to SequenceInfo constructor is the final one.
-        # The current logic for as_entity already returns the sequence in its final form (e.g., uppercase).
-        # If explicit type, the original sequence is used. This might be an inconsistency.
-        # Let's assume `as_entity` is the source of truth for sequence format if type guessing occurs.
-        # If type is explicit, we use the raw sequence. This seems acceptable.
-
-        final_sequences_info = []
-        for i, s_info_draft in enumerate(sequences_info):
-            # If type was guessed, as_entity already formatted the sequence.
-            # If type was explicit, s_info_draft.sequence is the raw sequence.
-            # To ensure consistency (e.g. for ligand_ccd being uppercase as per as_entity):
-            final_seq_str = s_info_draft.sequence
-            if s_info_draft.molecule_type in ["protein", "rna", "dna", "ligand_ccd"]:
-                 final_seq_str = s_info_draft.sequence.upper()
-            # For smiles and unknown, keep original casing as `as_entity` does.
-
-            final_sequences_info.append(SequenceInfo(
-                original_name=s_info_draft.original_name,
-                sequence=final_seq_str, # Use consistently formatted sequence
-                molecule_type=s_info_draft.molecule_type,
-                chain_id=s_info_draft.chain_id,
-                molecule_type_confidence=s_info_draft.molecule_type_confidence if hasattr(s_info_draft, 'molecule_type_confidence') else 1.0
-            ))
-        sequences_info = final_sequences_info
-
-
-        if not sequences_info:
-            raise ValueError(f"No sequences found in FASTA file: {filepath}")
-
-        return JobInput(
-            name_stem=name_stem,
-            sequences=sequences_info,
-            raw_input_type="fasta",
-            input_msa_paths=input_msa_paths
-        )
-
-    def _parse_af3_json_file(self, filepath: Path, name_stem: str) -> JobInput:
+    def _parse_fasta(self, file_path: Path, name_stem: str) -> Optional[JobInput]:
         """
-        Parses an AlphaFold3 JSON file into a JobInput object.
-        Extracts sequences, chain IDs, and any provided MSA paths.
+        Parses a FASTA file.
         """
+        sequences_info: List[SequenceInfo] = []
+        chain_id_generator = idgen()
+        current_sequence_parts: List[str] = []
+        current_original_name: Optional[str] = None
+
         try:
-            with open(filepath, 'r') as f:
-                data = json.load(f)
+            with open(file_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if line.startswith('>'):
+                        # Process previous sequence if exists
+                        if current_original_name is not None and current_sequence_parts:
+                            full_sequence = "".join(current_sequence_parts)
+                            chain_id = next(chain_id_generator)
+                            sequences_info.append(as_entity(full_sequence, chain_id, current_original_name))
+                        
+                        # Start new sequence
+                        current_original_name = line[1:].strip() # Name is everything after '>'
+                        current_sequence_parts = []
+                    elif current_original_name is not None: # Only append if we are inside a sequence block
+                        # Filter out non-alphabet characters (safer than just upper)
+                        cleaned_line = ''.join(filter(str.isalpha, line))
+                        current_sequence_parts.append(cleaned_line)
             
-            # Validate and parse using Pydantic model
-            parsed_af3_input = Af3PydanticModel.model_validate(data)
+            # Process the last sequence in the file
+            if current_original_name is not None and current_sequence_parts:
+                full_sequence = "".join(current_sequence_parts)
+                chain_id = next(chain_id_generator)
+                sequences_info.append(as_entity(full_sequence, chain_id, current_original_name))
 
-            job_sequences: List[SequenceInfo] = []
-            input_msa_paths: Dict[str, str] = {}
-
-            chain_id_gen_for_ligands = idgen() # In case ligands in JSON don't have IDs we can use
-
-            for seq_item_wrapper in parsed_af3_input.sequences:
-                seq_info = None
-                # The wrapper can be Protein, RNA, DNA, or Ligand
-                # We need to get the actual chain object (ProteinChain, RNAChain, etc.)
-                actual_chain_obj = None
-                molecule_type_literal: Optional[SequenceType] = None
-                original_name_from_json = name_stem # Default, can be improved if chain has own name
-
-                if isinstance(seq_item_wrapper, Protein):
-                    actual_chain_obj = seq_item_wrapper.protein
-                    molecule_type_literal = "protein"
-                elif isinstance(seq_item_wrapper, RNA):
-                    actual_chain_obj = seq_item_wrapper.rna
-                    molecule_type_literal = "rna"
-                elif isinstance(seq_item_wrapper, DNA):
-                    actual_chain_obj = seq_item_wrapper.dna
-                    molecule_type_literal = "dna"
-                elif isinstance(seq_item_wrapper, Ligand):
-                    actual_chain_obj = seq_item_wrapper.ligand
-                    # Determine if ligand is CCD or SMILES based on which field is present
-                    if actual_chain_obj.ccdCodes:
-                        molecule_type_literal = "ligand_ccd"
-                    elif actual_chain_obj.smiles:
-                        molecule_type_literal = "ligand_smiles"
-                
-                if actual_chain_obj and molecule_type_literal:
-                    # Handle single ID or list of IDs (for homomers)
-                    ids_to_process: List[str]
-                    if isinstance(actual_chain_obj.id, str):
-                        ids_to_process = [actual_chain_obj.id]
-                    else: # It's a list of IDs
-                        ids_to_process = actual_chain_obj.id
-                    
-                    # For molecules with actual sequences
-                    sequence_str = ""
-                    if hasattr(actual_chain_obj, 'sequence') and actual_chain_obj.sequence:
-                        sequence_str = actual_chain_obj.sequence
-                    elif molecule_type_literal == "ligand_ccd" and actual_chain_obj.ccdCodes:
-                        sequence_str = actual_chain_obj.ccdCodes[0] # Taking the first CCD code as sequence
-                    elif molecule_type_literal == "ligand_smiles" and actual_chain_obj.smiles:
-                        sequence_str = actual_chain_obj.smiles
-
-                    for chain_id_str in ids_to_process:
-                        seq_info = SequenceInfo(
-                            original_name=original_name_from_json, # Could try to get more specific name if available
-                            sequence=sequence_str,
-                            molecule_type=molecule_type_literal,
-                            chain_id=chain_id_str
-                        )
-                        job_sequences.append(seq_info)
-
-                        # Check for MSA paths (for Protein, RNA, DNA)
-                        if hasattr(actual_chain_obj, 'unpairedMsaPath') and actual_chain_obj.unpairedMsaPath:
-                            input_msa_paths[chain_id_str] = actual_chain_obj.unpairedMsaPath
-                        # Could also check for pairedMsaPath if relevant for JobInput
-                else:
-                    # This branch should ideally not be hit if Pydantic models are comprehensive
-                    # and input conforms to one of the wrapped types (Protein, RNA, DNA, Ligand).
-                    # If it is hit, it means seq_item_wrapper was not an instance of these.
-                    raise ValueError(f"Encountered an unexpected sequence item type in AF3 JSON '{filepath}'. Expected Protein, RNA, DNA, or Ligand wrapper.")
-
-            if not job_sequences:
-                # This case implies the 'sequences' list in JSON was empty or all items were unparseable.
-                raise ValueError(f"No valid sequences extracted from AF3 JSON '{filepath}'.")
+            if not sequences_info:
+                logger.error(f"No valid sequences found in FASTA file: {file_path}")
+                return None
 
             return JobInput(
                 name_stem=name_stem,
-                sequences=job_sequences,
-                raw_input_type="af3_json",
-                input_msa_paths=input_msa_paths if input_msa_paths else {}
+                sequences=sequences_info,
+                raw_input_type="fasta"
+                # input_msa_paths and constraints will be empty for FASTA
             )
 
-        except FileNotFoundError: # Specific exception for file not found
-            raise FileNotFoundError(f"AF3 JSON file not found: {filepath}")
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Error decoding AF3 JSON file '{filepath}': Invalid JSON format. {e}")
-        except Exception as e: # Covers Pydantic validation errors, other unexpected issues
-            # Consider logging the original exception e for debugging, or re-raising if specific handling is not needed
-            raise ValueError(f"Error parsing AlphaFold3 JSON file '{filepath}': {e}")
-            # Removed return None, execution will stop due to exception
+        except StopIteration:
+             logger.error(f"Exceeded maximum number of chain IDs (ZZ). Too many sequences in FASTA: {file_path}")
+             return None
+        except Exception as e:
+            logger.error(f"Error parsing FASTA file {file_path}: {e}", exc_info=True)
+            return None
 
-    def _parse_boltz_yaml_file(self, filepath: Path, name_stem: str) -> JobInput:
-        """Parses a Boltz YAML input file."""
+    def _parse_af3_json(self, file_path: Path, name_stem: str) -> Optional[JobInput]:
+        """
+        Parses an AlphaFold3 JSON file.
+        Extracts sequences, IDs, types, MSA paths, seeds, and bonds.
+        """
         sequences_info: List[SequenceInfo] = []
         input_msa_paths: Dict[str, str] = {}
-        constraints: List[Dict[str, Any]] | None = None
+        model_seeds: Optional[List[int]] = None
+        bonded_atom_pairs: Optional[List[Any]] = None
+        has_msa_flag = False # Flag if any MSA path is found
 
         try:
-            with open(filepath, 'r') as f:
-                data = yaml.safe_load(f)
-        except yaml.YAMLError as e:
-            raise ValueError(f"Error parsing Boltz YAML file '{filepath}': Invalid YAML format. {e}")
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Boltz YAML file not found: {filepath}")
-        except Exception as e:
-            raise ValueError(f"An unexpected error occurred while reading Boltz YAML file '{filepath}': {e}")
+            with open(file_path, 'r') as f:
+                data = json.load(f)
 
+            # Basic validation using Pydantic model if desired (optional but recommended)
+            try:
+                # Pass Path object to Pydantic model if it expects it
+                af3_input_model = Af3Input(**data)
+                # Use validated data from the model
+                data = af3_input_model.model_dump(by_alias=True) 
+            except Exception as pydantic_error: # Catch validation errors specifically
+                 logger.warning(f"Input JSON {file_path} failed Pydantic validation for Af3Input: {pydantic_error}. Attempting to parse leniently.")
+                 # Continue with raw dictionary `data`, but parsing might fail later
 
-        if not isinstance(data, dict):
-            raise ValueError(f"Invalid Boltz YAML content in '{filepath}': Expected a dictionary at the root.")
+            job_name_from_json = data.get("name", name_stem)
+            model_seeds = data.get("modelSeeds")
+            bonded_atom_pairs = data.get("bondedAtomPairs")
 
-        parsed_sequences = data.get("sequences", [])
-        if not isinstance(parsed_sequences, list):
-            raise ValueError(f"Invalid Boltz YAML '{filepath}': 'sequences' field must be a list.")
+            chain_id_generator = idgen() # Needed if IDs are missing?
+            processed_ids = set()
 
-        for i, item in enumerate(parsed_sequences):
-            if not isinstance(item, dict) or len(item) != 1:
-                raise ValueError(f"Invalid Boltz YAML '{filepath}': Each item in 'sequences' list (index {i}) must be a dictionary with a single key (e.g., 'protein', 'ligand').")
+            for entity in data.get("sequences", []):
+                if not isinstance(entity, dict) or len(entity) != 1:
+                    logger.warning(f"Skipping invalid entity in AF3 JSON sequences: {entity}")
+                    continue
+                
+                entity_type, entity_data = list(entity.items())[0]
+                if not isinstance(entity_data, dict):
+                     logger.warning(f"Skipping invalid entity data for type '{entity_type}': {entity_data}")
+                     continue
 
-            entity_type_key = list(item.keys())[0] # e.g., "protein", "rna", "dna", "ligand"
-            entity_data = item[entity_type_key]
-
-            if not isinstance(entity_data, dict):
-                raise ValueError(f"Invalid Boltz YAML '{filepath}': Value for '{entity_type_key}' (index {i}) must be a dictionary.")
-
-            chain_ids = entity_data.get("id")
-            if isinstance(chain_ids, str):
-                chain_ids = [chain_ids] # Normalize to list
-            elif not isinstance(chain_ids, list) or not all(isinstance(cid, str) for cid in chain_ids):
-                raise ValueError(f"Invalid Boltz YAML '{filepath}': 'id' for '{entity_type_key}' (index {i}) must be a string or list of strings.")
-
-            sequence_str = entity_data.get("sequence")
-            smiles_str = entity_data.get("smiles")
-            ccd_code = entity_data.get("ccd")
-            msa_path = entity_data.get("msa")
-
-            molecule_type: SequenceType = "unknown"
-            actual_sequence_data = ""
-
-            if entity_type_key == "protein":
-                molecule_type = "protein"
-                if not isinstance(sequence_str, str):
-                    raise ValueError(f"Invalid Boltz YAML '{filepath}': 'sequence' missing or not a string for protein (index {i}).")
-                actual_sequence_data = sequence_str
-            elif entity_type_key == "rna":
-                molecule_type = "rna"
-                if not isinstance(sequence_str, str):
-                    raise ValueError(f"Invalid Boltz YAML '{filepath}': 'sequence' missing or not a string for RNA (index {i}).")
-                actual_sequence_data = sequence_str
-            elif entity_type_key == "dna":
-                molecule_type = "dna"
-                if not isinstance(sequence_str, str):
-                    raise ValueError(f"Invalid Boltz YAML '{filepath}': 'sequence' missing or not a string for DNA (index {i}).")
-                actual_sequence_data = sequence_str
-            elif entity_type_key == "ligand":
-                if smiles_str and isinstance(smiles_str, str):
-                    molecule_type = "ligand_smiles"
-                    actual_sequence_data = smiles_str
-                elif ccd_code and isinstance(ccd_code, str):
-                    molecule_type = "ligand_ccd"
-                    actual_sequence_data = ccd_code
+                raw_ids = entity_data.get("id")
+                chain_ids: List[str]
+                if isinstance(raw_ids, str):
+                    chain_ids = [raw_ids]
+                elif isinstance(raw_ids, list):
+                    chain_ids = [str(i) for i in raw_ids if isinstance(i, str)]
                 else:
-                    raise ValueError(f"Invalid Boltz YAML '{filepath}': Ligand (index {i}) must have a 'smiles' or 'ccd' string.")
-            else:
-                raise ValueError(f"Unsupported entity type '{entity_type_key}' in Boltz YAML (index {i}) from file '{filepath}'.")
+                    logger.warning(f"Entity type '{entity_type}' missing or invalid 'id'. Assigning automatically.")
+                    # This case might indicate an issue, AF3 format expects IDs.
+                    # Assigning one for robustness, but logging warning.
+                    try:
+                        chain_ids = [next(chain_id_generator)]
+                        logger.warning(f"Assigned automatic ID: {chain_ids[0]}")
+                    except StopIteration:
+                         logger.error(f"Ran out of chain IDs while parsing AF3 JSON: {file_path}")
+                         return None
+                
+                # Determine sequence and type
+                seq: Optional[str] = None
+                seq_type: SequenceType = "unknown"
+                msa_path: Optional[str] = None
+                original_name = f"{entity_type}_{'_'.join(chain_ids)}" # Construct a name
 
-            for chain_id_str in chain_ids:
-                sequences_info.append(SequenceInfo(
-                    original_name=chain_id_str, # Use chain_id as original_name
-                    sequence=actual_sequence_data,
-                    molecule_type=molecule_type,
-                    chain_id=chain_id_str
-                ))
-                if molecule_type == "protein" and msa_path and isinstance(msa_path, str) and msa_path.lower() != "empty":
-                    input_msa_paths[chain_id_str] = msa_path
-        
-        parsed_constraints = data.get("constraints")
-        if parsed_constraints is not None:
-            if not isinstance(parsed_constraints, list):
-                 raise ValueError(f"Invalid Boltz YAML '{filepath}': 'constraints' field, if present, must be a list.")
-            constraints = parsed_constraints
+                if entity_type == "protein":
+                    seq = entity_data.get("sequence")
+                    seq_type = "protein"
+                    msa_path = entity_data.get("unpairedMsaPath")
+                elif entity_type == "rna":
+                    seq = entity_data.get("sequence")
+                    seq_type = "rna"
+                    # msa_path = entity_data.get("unpairedMsaPath") # If DNA MSAs become supported
+                elif entity_type == "dna":
+                    seq = entity_data.get("sequence")
+                    seq_type = "dna"
+                    # msa_path = entity_data.get("unpairedMsaPath") # If DNA MSAs become supported
+                elif entity_type == "ligand":
+                    if "ccdCodes" in entity_data and isinstance(entity_data["ccdCodes"], list) and entity_data["ccdCodes"]:
+                        seq = entity_data["ccdCodes"][0] # Take the first CCD code as the sequence identifier
+                        seq_type = "ligand_ccd"
+                    elif "smiles" in entity_data and isinstance(entity_data["smiles"], str):
+                        seq = entity_data["smiles"]
+                        seq_type = "ligand_smiles"
+                    else:
+                         logger.warning(f"Ligand entity has invalid/missing ccdCodes or smiles: {entity_data}. Skipping.")
+                         continue
+                else:
+                    logger.warning(f"Unsupported entity type '{entity_type}' in AF3 JSON. Skipping.")
+                    continue
 
+                if seq is None:
+                     logger.warning(f"Entity type '{entity_type}' with ID(s) '{chain_ids}' is missing sequence data. Skipping.")
+                     continue
+                
+                # Add sequence info for each ID (handles homomers)
+                for chain_id in chain_ids:
+                    if chain_id in processed_ids:
+                         logger.warning(f"Duplicate chain ID '{chain_id}' encountered in AF3 JSON. Check input format. Skipping duplicate.")
+                         continue
+                    
+                    # Use as_entity for basic validation/normalization of sequence based on type?
+                    # seq_info = as_entity(seq, chain_id, original_name)
+                    # if seq_info.molecule_type != seq_type and seq_type != "unknown":
+                    #      logger.warning(f"Guessed type {seq_info.molecule_type} differs from JSON type {seq_type} for ID {chain_id}")
+                    # For now, trust the JSON type directly:
+                    seq_info = SequenceInfo(original_name=original_name, sequence=seq, molecule_type=seq_type, chain_id=chain_id)
+                    sequences_info.append(seq_info)
+                    
+                    if msa_path and seq_type in ["protein", "rna"]:
+                        # Ensure path is absolute or relative to JSON location
+                        abs_msa_path = Path(msa_path) 
+                        if not abs_msa_path.is_absolute():
+                            abs_msa_path = file_path.parent / msa_path
+                        input_msa_paths[chain_id] = str(abs_msa_path.resolve())
+                        has_msa_flag = True
+                    processed_ids.add(chain_id)
+            
+            if not sequences_info:
+                logger.error(f"No valid sequences could be extracted from AF3 JSON: {file_path}")
+                return None
 
-        if not sequences_info:
-            raise ValueError(f"No sequences found in Boltz YAML file: {filepath}")
+            job_input = JobInput(
+                name_stem=job_name_from_json,
+                sequences=sequences_info,
+                raw_input_type="af3_json",
+                input_msa_paths=input_msa_paths,
+                constraints=None, # AF3 JSON doesn't have constraints like Boltz
+                # Store seeds and bonds if they exist
+                **({"model_seeds": model_seeds} if model_seeds else {}),
+                **({"bonded_atom_pairs": bonded_atom_pairs} if bonded_atom_pairs else {})
+            )
+            # Set has_msa flag based on whether paths were found
+            if has_msa_flag:
+                job_input.__dict__["has_msa"] = True # Add flag if not default
+            # Check if the input file looks like a full AF3 _data.json (contains MSA strings)
+            # This is a simple heuristic: check if ANY protein has a non-empty unpairedMsa string
+            if any(
+                isinstance(ent, dict) and ent.get("protein", {}).get("unpairedMsa") 
+                for ent in data.get("sequences", [])
+            ):
+                 job_input.__dict__["af3_data_json"] = str(file_path.resolve()) 
+                 job_input.__dict__["has_msa"] = True # Has MSA *content*
+                 logger.info("Input JSON appears to contain MSA content (unpairedMsa fields found). Setting af3_data_json path.")
 
-        return JobInput(
-            name_stem=name_stem,
-            sequences=sequences_info,
-            raw_input_type="boltz_yaml",
-            input_msa_paths=input_msa_paths,
-            constraints=constraints
-        )
+            return job_input
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON format in file {file_path}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error parsing AlphaFold3 JSON file {file_path}: {e}", exc_info=True)
+            return None
+
+    def _parse_boltz_yaml(self, file_path: Path, name_stem: str) -> Optional[JobInput]:
+        """
+        Parses a Boltz YAML file.
+        Extracts sequences, IDs, types, MSA paths, and constraints.
+        """
+        sequences_info: List[SequenceInfo] = []
+        input_msa_paths: Dict[str, str] = {}
+        constraints: Optional[List[Dict[str, Any]]] = None
+        has_msa_flag = False
+
+        try:
+            with open(file_path, 'r') as f:
+                data = yaml.safe_load(f)
+
+            if not isinstance(data, dict):
+                logger.error(f"Invalid YAML format: Root is not a dictionary in {file_path}")
+                return None
+
+            constraints = data.get("constraints")
+            if constraints is not None and not isinstance(constraints, list):
+                logger.warning(f"Ignoring invalid 'constraints' format (expected list) in {file_path}")
+                constraints = None
+
+            processed_ids = set()
+            for entity in data.get("sequences", []):
+                if not isinstance(entity, dict) or len(entity) != 1:
+                    logger.warning(f"Skipping invalid entity in Boltz YAML sequences: {entity}")
+                    continue
+                
+                entity_type, entity_data = list(entity.items())[0]
+                if not isinstance(entity_data, dict):
+                     logger.warning(f"Skipping invalid entity data for type '{entity_type}': {entity_data}")
+                     continue
+                
+                chain_id = entity_data.get("id")
+                if not chain_id or not isinstance(chain_id, str):
+                    logger.warning(f"Entity type '{entity_type}' missing or invalid 'id'. Skipping.")
+                    continue
+                
+                if chain_id in processed_ids:
+                    logger.warning(f"Duplicate chain ID '{chain_id}' encountered in Boltz YAML. Skipping duplicate.")
+                    continue
+
+                seq: Optional[str] = None
+                seq_type: SequenceType = "unknown"
+                msa_path: Optional[str] = None
+                original_name = f"{entity_type}_{chain_id}"
+
+                if entity_type == "protein":
+                    seq = entity_data.get("sequence")
+                    seq_type = "protein"
+                    msa_path = entity_data.get("msa") # Boltz uses "msa" key
+                elif entity_type == "rna":
+                    seq = entity_data.get("sequence")
+                    seq_type = "rna"
+                    # msa_path = entity_data.get("msa") # If Boltz supports RNA MSA
+                elif entity_type == "dna":
+                    seq = entity_data.get("sequence")
+                    seq_type = "dna"
+                elif entity_type == "ligand":
+                    if "ccd" in entity_data and isinstance(entity_data["ccd"], str):
+                        seq = entity_data["ccd"]
+                        seq_type = "ligand_ccd"
+                    elif "smiles" in entity_data and isinstance(entity_data["smiles"], str):
+                        seq = entity_data["smiles"]
+                        seq_type = "ligand_smiles"
+                    else:
+                         logger.warning(f"Ligand entity has invalid/missing ccd or smiles: {entity_data}. Skipping.")
+                         continue
+                else:
+                    logger.warning(f"Unsupported entity type '{entity_type}' in Boltz YAML. Skipping.")
+                    continue
+
+                if seq is None:
+                     logger.warning(f"Entity type '{entity_type}' with ID '{chain_id}' is missing sequence data. Skipping.")
+                     continue
+
+                seq_info = SequenceInfo(original_name=original_name, sequence=seq, molecule_type=seq_type, chain_id=chain_id)
+                sequences_info.append(seq_info)
+                
+                if msa_path and seq_type == "protein":
+                    abs_msa_path = Path(msa_path)
+                    if not abs_msa_path.is_absolute():
+                        abs_msa_path = file_path.parent / msa_path
+                    input_msa_paths[chain_id] = str(abs_msa_path.resolve())
+                    has_msa_flag = True
+                processed_ids.add(chain_id)
+
+            if not sequences_info:
+                logger.error(f"No valid sequences could be extracted from Boltz YAML: {file_path}")
+                return None
+
+            job_input = JobInput(
+                name_stem=name_stem,
+                sequences=sequences_info,
+                raw_input_type="boltz_yaml",
+                input_msa_paths=input_msa_paths,
+                constraints=constraints
+            )
+            if has_msa_flag:
+                job_input.__dict__["has_msa"] = True # Add flag if not default
+                
+            # Boltz YAML is less likely to contain full MSA *content* like AF3 data.json
+            # So we don't set af3_data_json path here.
+            
+            return job_input
+
+        except yaml.YAMLError as e:
+            logger.error(f"Invalid YAML format in file {file_path}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error parsing Boltz YAML file {file_path}: {e}", exc_info=True)
+            return None
 
 # Example Usage (commented out)
 # if __name__ == '__main__':

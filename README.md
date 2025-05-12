@@ -1,111 +1,120 @@
-## Supported Input Formats
+# Protein Ensemble Prediction CLI
 
-This application supports the following input formats:
+## Overview
 
-1.  **FASTA files (`.fasta`, `.fa`, etc.):** Ideal for simple inputs, especially when you want the application to handle Multiple Sequence Alignment (MSA) generation automatically. See detailed FASTA formatting guidelines below.
-2.  **AlphaFold3 JSON (`.json`):** You can provide a pre-existing AlphaFold3 JSON file. This is useful if you have already run part of the AlphaFold3 pipeline (e.g., obtained an MSA-enriched JSON) or have a complex setup defined in AF3's native format. The system will use the sequences and any available MSA information from this file and will also convert it to a suitable format for Boltz-1 predictions.
-3.  **Boltz-1 YAML (`.yaml`, `.yml`):** You can provide a Boltz-1 YAML input file. This is useful if you have specific constraints, modified residues, or other advanced features defined in Boltz-1's native format. The system will use the sequences and any available MSA/constraint information from this file and will also convert it to a suitable format for AlphaFold3 predictions.
+This command-line application simplifies running ensemble protein structure predictions using both **AlphaFold3** and **Boltz-1** on High-Performance Computing (HPC) clusters. 
 
-The system is designed to internally manage and convert these different input types as needed to run predictions with both AlphaFold3 and Boltz-1. 
+**The key advantage:** You provide your target sequence(s) in **one** of the supported input formats (FASTA, AlphaFold3 JSON, or Boltz-1 YAML), specify how Multiple Sequence Alignments (MSAs) should be obtained (or let the tool generate them automatically), and the application handles the rest:
 
-## FASTA Input Formatting Guidelines
+*   **Internal Conversion:** Automatically converts your input into the specific formats required by both AlphaFold3 and Boltz-1.
+*   **Unified MSA Handling:** Manages MSA generation or reuse consistently for both models based on your choice (using the AF3 pipeline or ColabFold method).
+*   **Parallel Execution:** Orchestrates predictions with AlphaFold3 and Boltz-1, potentially in parallel on different GPUs.
+*   **Containerized Runs:** Executes models reliably within their Singularity containers.
+*   **Organized Output:** Saves the native outputs from each model into a structured output directory.
 
-When providing input as a FASTA file, the system will parse each entry and attempt to determine the molecule type based on the sequence content. Here are some important guidelines to ensure your FASTA file is processed correctly:
+This eliminates the need for manual format conversions and separate pipeline runs for each model, streamlining your ensemble prediction workflow.
 
+## Requirements
 
-### Explicitly Specifying Molecule Types and MSAs in FASTA Headers
+### Software
 
-In addition to type guessing based on sequence content, you can provide more explicit information directly in the FASTA header using a pipe-separated (`|`) format. This is particularly useful for ensuring correct molecule typing, assigning specific chain IDs, and providing pre-computed Multiple Sequence Alignments (MSAs) for protein chains.
+*   **Singularity (or Apptainer):** Must be installed on the HPC system to run the containerized models.
+*   **Python 3.9+:** Required for the CLI application itself.
+*   **Dependencies:**  A full list can be found in `requirements.txt`.
 
-The recognized format is:
+### Input Formats
 
-`>CHAIN_ID|ENTITY_TYPE|MSA_PATH`
+This tool accepts inputs in FASTA, AlphaFold3 JSON, and Boltz-1 YAML formats. 
 
-Where:
+*   For detailed **FASTA** formatting guidelines, see [docs/fasta.md](docs/fasta.md).
+*   For the official **AlphaFold3 JSON** input specification, please refer to the [AlphaFold3 Input Documentation](https://github.com/google-deepmind/alphafold3/blob/main/docs/input.md).
+*   For the official **Boltz-1 YAML** input specification, please refer to the [Boltz Prediction Documentation](https://github.com/jwohlwend/boltz/blob/main/docs/prediction.md).
 
-*   **`CHAIN_ID`**: Your desired unique identifier for this chain (e.g., `PROTA`, `LIG1`, `RNA_R`). This ID will be used in the generated configuration files. If left empty but pipes are present (e.g. `>|protein|...`), a chain ID will be automatically generated.
-*   **`ENTITY_TYPE`**: Specifies the type of the molecule. Supported values are (case-insensitive):
-    *   `protein`: For a protein sequence.
-    *   `rna`: For an RNA sequence.
-    *   `dna`: For a DNA sequence.
-    *   `smiles`: For a ligand defined by a SMILES string. The sequence line should contain the SMILES string.
-    *   `ccd`: For a ligand defined by a PDB Chemical Component Dictionary (CCD) code. The sequence line should contain the CCD code (e.g., `ATP`).
-*   **`MSA_PATH`**: (Optional, primarily for `protein` entity type)
-    *   The full or relative path to a pre-computed Multiple Sequence Alignment file for this protein (e.g., in `.a3m` format).
-    *   If you want to run this protein explicitly without an MSA (single sequence mode), use the special keyword `empty`.
-    *   If this field is omitted or left blank for a protein, the system will attempt to generate an MSA automatically.
-    *   This field is ignored if the determined `ENTITY_TYPE` is not `protein`.
+### Model and Data Paths
 
-**How it works with this format:**
+The following paths must be provided as command-line arguments when running the application:
 
-*   If a FASTA header matches this pipe-separated format (i.e., contains `|` characters):
-    *   The system will attempt to parse `CHAIN_ID`, `ENTITY_TYPE`, and `MSA_PATH`.
-    *   The `CHAIN_ID` from the header will be used if provided and non-empty; otherwise, a new chain ID will be generated.
-    *   If the parsed `ENTITY_TYPE` is one of the recognized values listed above (case-insensitive), it will be used directly. Sequence-based type guessing will be skipped for this entry.
-    *   If the parsed `ENTITY_TYPE` is *not* one of the recognized values (or is missing), the system will fall back to sequence-based type guessing (as described in "Sequence Interpretation and Type Guessing") to determine the molecule type. However, the `CHAIN_ID` (either parsed from the header or generated if the header's `CHAIN_ID` part was empty) will still be used.
-    *   If an `MSA_PATH` is provided and the *explicitly specified* `ENTITY_TYPE` in the header was `protein`, that MSA will be used. If type guessing was invoked for an entry (even if it guessed 'protein'), an `MSA_PATH` from the header for that entry will not be used automatically; MSA generation would proceed based on the guessed type.
+*   **AlphaFold3 Singularity Image (`--alphafold3_sif_path`):** Absolute path to the AlphaFold3 Singularity image file (`.sif`). 
+*   **Boltz-1 Singularity Image (`--boltz1_sif_path`):** Absolute path to the Boltz-1 Singularity image file (`.sif`).
+*   **AlphaFold3 Model Weights (`--alphafold3_model_weights_dir`):** Absolute path to the directory containing the downloaded AlphaFold3 model parameters/weights.
 
-**Examples using the explicit header format:**
+### Optional (but often necessary) Paths
 
-1.  **Protein with a pre-computed MSA:**
-    ```fasta
-    >ChainA|protein|/path/to/my_msas/prota.a3m
-    MPEPTIDESEQUENCE...
+*   **AlphaFold3 Databases (`--alphafold3_database_dir`):** Absolute path to the root directory containing AlphaFold3 databases (e.g., UniRef, MGnify, PDB, etc.). This is required if the application needs to run the AlphaFold3 MSA generation pipeline.
+*   **ColabFold MSA Server URL (`--colabfold_msa_server_url`):** URL for a ColabFold MMseqs2 API server. If using the `colabfold` MSA method, and you wish to use a specific (e.g., local) server, provide its URL. If not provided when `msa_method` is `colabfold`, Boltz will use its internal default server URL.
+
+## Installation
+
+1.  **Clone the repository:**
+    ```bash
+    git clone <repository_url>
+    cd protein-ensemble-pred
     ```
-
-2.  **Protein to be run in single-sequence mode:**
-    ```fasta
-    >ChainB|protein|
-    ANOTHERPEPTIDE...
+2.  **Install Python dependencies:**
+    ```bash
+    pip install -r requirements.txt
     ```
+3.  **Ensure Singularity Images and Data are Accessible:**
+    *   Download or build the AlphaFold3 and Boltz-1 Singularity images. **We recommend using the pre-built images available from [https://github.com/EpiGenomicsCode/AF3-Container](https://github.com/EpiGenomicsCode/AF3-Container).** Place the `.sif` files in accessible locations on your HPC system.
+    *   **Download the AlphaFold3 Model Weights:** Access to the official AlphaFold3 model parameters requires registration for non-commercial use via the [AlphaFold 3 Model Parameters Request Form](https://docs.google.com/forms/d/e/1FAIpQLSfWZAgo1aYk0O4MuAXZj8xRQ8DafeFJnldNOnh_13qAx2ceZw/viewform). Ensure you meet the terms and download the weights to an accessible directory path.
+    *   **Download AlphaFold3 Databases (if needed):** If you plan to use the `alphafold3` MSA generation method, you must download the required databases. Use the official [fetch_databases.sh script](https://github.com/google-deepmind/alphafold3/blob/main/fetch_databases.sh) provided by Google DeepMind. Ensure the databases are stored in an accessible directory path.
 
-3.  **RNA molecule:**
-    ```fasta
-    >RNASegment1|rna|
-    AGCUAGCUAGCU...
-    ```
+## Basic Usage
 
-4.  **Ligand specified by a SMILES string:**
-    ```fasta
-    >MyDrug|smiles|
-    CC(=O)Oc1ccccc1C(=O)OH
-    ```
+To run a prediction:
 
-5.  **Ligand specified by a CCD code:**
-    ```fasta
-    >CofactorX|ccd|
-    NAD
-    ```
+```bash
+python -m protein_ensemble_pred.cli \
+    --input_file /path/to/your/input.fasta \
+    --output_dir /path/to/your/output_directory \
+    --alphafold3_sif_path /path/to/alphafold3.sif \
+    --boltz1_sif_path /path/to/boltz1.sif \
+    --alphafold3_model_weights_dir /path/to/af3_weights \
+    --alphafold3_database_dir /path/to/af3_databases # (If AF3 MSA generation is needed)
+    # Add other optional parameters as needed (e.g., --msa_method, model-specific params)
+```
 
-By using this explicit header format, you gain precise control over how each sequence in your FASTA file is interpreted and prepared for the prediction models. If the header does not follow this pipe-separated format (i.e. no `|` characters), the system will fall back to the general type guessing and automatic chain ID generation described in "Sequence Interpretation and Type Guessing".
+### Example Command:
 
-### Sequence Interpretation and Type Guessing
+```bash
+python -m protein_ensemble_pred.cli \
+    --input_file examples/T1084.fasta \
+    --output_dir results/T1084_output \
+    --alphafold3_sif_path /apps/containers/alphafold3.sif \
+    --boltz1_sif_path /apps/containers/boltz1.sif \
+    --alphafold3_model_weights_dir /data/alphafold3_params \
+    --alphafold3_database_dir /data/alphafold_databases \
+    --msa_method alphafold3 \
+    --log_level INFO
+```
 
-Each sequence in the FASTA file will be assigned a molecule type. The type guessing prioritizes as follows:
+Refer to the command-line help for a full list of options and their descriptions:
 
-1.  **RNA:** Sequences composed strictly of `A`, `C`, `G`, `U` .
-2.  **DNA:** Sequences composed strictly of `A`, `C`, `G`, `T` .
-3.  **Protein:** Sequences composed of the standard 20 amino acid one-letter codes.
-4.  **Ligand (CCD Code):** If a sequence is 1-3 characters long and consists of alphanumeric characters, it will be interpreted as a potential PDB Chemical Component Dictionary (CCD) code for a ligand (e.g., `ATP`, `HEM`).
-5.  **Ligand (SMILES String):** If a sequence does not match any of the above and contains characters commonly found in SMILES strings (e.g., `(`, `)`, `=`, `#`, `[`, `]`, numbers, `+`, `-`, `@`), it will be heuristically interpreted as a SMILES string for a ligand.
-6.  **Unknown:** If a sequence does not fit any of the above categories, it will be marked as `unknown`. These sequences wil be ignored and cause warnings during processing.
+```bash
+python -m protein_ensemble_pred.cli --help
+```
 
-**Note:** The type guessing for ligands is heuristic. For precise ligand definition, especially for novel ligands not in standard CCDs, providing an AlphaFold3 JSON input with explicit SMILES or custom CCD definitions is recommended.
+For detailed information on FASTA input formatting, see [docs/fasta.md](docs/fasta.md).
 
-### Header Lines (`>`)
+## Output Structure
 
-*   The entire line following the `>` symbol is captured as the original name or description of the sequence. This name is currently used for informational purposes and does **not** influence molecule type determination or stoichiometry.
-*   Special header notations like `#protein`, `#dna`, `#ligand`, or `#3` (for counts) found in some other FASTA utilities are **not** currently used by this parser for type or stoichiometry. 
+The application will create the specified output directory. Inside this directory, you will typically find:
 
-### Complexes
+*   Subdirectories for AlphaFold3 and Boltz-1 containing their respective native output files (PDB/CIF structures, confidence scores, etc.).
+*   Configuration files generated for each model.
+*   Log files (`ensemble_prediction.log`, `alphafold3_run.log`, `boltz_run.log`).
+*   If MSAs were generated, intermediate MSA files may also be present in a subdirectory (e.g., `msa_intermediate_files`).
 
-*   If your FASTA file contains multiple sequences, they will be treated as individual components of a single complex. Each sequence will be assigned a unique chain ID (e.g., A, B, C, ...).
+## How it Works
 
-### Homomeric Chains (Multiple Copies of the Same Sequence)
-
-*   The current FASTA parser assigns a unique chain ID to each entry in the FASTA file. To model a homomer (e.g., a homotrimer where three copies of the same protein chain are present):
-    *   **Option 1 (Recommended for FASTA input):** Include the sequence multiple times in your FASTA file. Each will be treated as a separate chain that happens to have the same sequence, and they will be assigned different chain IDs (e.g., A, B, C for three identical sequences).
-    *   **Option 2 (Manual JSON edit):** After the AlphaFold3 JSON is generated from your FASTA, you would need to manually edit the JSON to represent homomeric relationships if you listed the sequence only once. For example, for a protein, you would change `"id": "A"` to `"id": ["A", "B", "C"]` for a trimer, ensuring these IDs are unique across the whole system.
-
-
-
+1.  **Unified Input Handling:** Parses your single input file (FASTA, AF3 JSON, or Boltz YAML) and standardizes the sequence and chain information internally.
+2.  **MSA Management:** Determines if MSAs are needed based on your input and `--msa_method` flag. 
+    *   If `msa_method` is `alphafold3` (default), it runs the AlphaFold3 data pipeline using its Singularity container to generate MSAs suitable for both models.
+    *   If `msa_method` is `colabfold`, it invokes the Boltz Singularity container with flags to use its MSA server functionality (which typically calls a ColabFold API) to retrieve MSAs, again making them available for both models.
+    *   Existing MSAs from the input file can also be used, bypassing generation.
+3.  **Configuration Generation:** Creates the specific input files (AF3 JSON, Boltz YAML) required by each model, incorporating the standardized sequence data and consistent MSA information.
+4.  **Orchestration & Execution:** 
+    *   Detects available GPUs.
+    *   Assigns GPUs to models (one per model if available) for parallel execution, or runs sequentially on a single GPU.
+    *   Constructs and executes `singularity run/exec` commands for both AlphaFold3 and Boltz-1, binding necessary directories (input configs, output, model weights, databases).
+5.  **Output Collection:** Gathers results and logs from both model runs into the specified output directory.
