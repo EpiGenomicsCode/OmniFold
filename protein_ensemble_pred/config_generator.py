@@ -86,7 +86,7 @@ class ConfigGenerator:
             return None
 
         json_file_path = config_output_dir / f"{job_input.name_stem}_af3_generated.json"
-        protein_msa_paths = job_input.get("protein_id_to_a3m_path", {}) # Use the dict from Orchestrator
+        protein_msa_paths = job_input.protein_id_to_a3m_path # Use the dict from Orchestrator
         input_msa_paths = job_input.input_msa_paths # Fallback from original input JSON
 
         try:
@@ -160,13 +160,13 @@ class ConfigGenerator:
                 return None
 
             # Use seeds from input if provided, otherwise generate one
-            model_seeds = job_input.get("model_seeds") or [random.randint(1, 100000)]
+            model_seeds = job_input.model_seeds if job_input.model_seeds is not None else [random.randint(1, 100000)]
 
             af3_input_data = Af3Input(
                 name=job_input.name_stem,
                 modelSeeds=model_seeds,
                 sequences=af3_sequences,
-                bondedAtomPairs=job_input.get("bonded_atom_pairs") 
+                bondedAtomPairs=job_input.bonded_atom_pairs 
                 # userCCD/userCCDPath would need to be handled if needed
             )
 
@@ -200,7 +200,7 @@ class ConfigGenerator:
         """
         boltz_config = {"version": 1, "sequences": []}
         sequences_list = []
-        protein_msa_paths = job_input.get("protein_id_to_a3m_path", {}) # Use the dict from Orchestrator
+        protein_msa_paths = job_input.protein_id_to_a3m_path # Use the dict from Orchestrator
         input_msa_paths = job_input.input_msa_paths # Fallback
         processed_ids = set()
 
@@ -256,8 +256,10 @@ class ConfigGenerator:
 
         boltz_config["sequences"] = sequences_list
 
-        if job_input.get("constraints"):
-            boltz_config["constraints"] = job_input["constraints"]
+        # Add constraints if they exist in job_input
+        if job_input.constraints:
+            boltz_config["constraints"] = job_input.constraints
+            logger.info("Added constraints to Boltz YAML.")
         
         output_filename = f"{job_input.name_stem}_boltz_generated.yaml"
         output_filepath = config_output_dir / output_filename
