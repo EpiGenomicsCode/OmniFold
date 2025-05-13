@@ -74,12 +74,15 @@ class MSAManager:
             
         # Check if MSA was already provided in a way that bypasses generation
         # (e.g., input was data.json or Boltz YAML with MSA paths)
-        if self.job_input.get("has_msa", False) and (self.job_input.get("af3_data_json") or self.job_input.get("protein_id_to_a3m_path") or self.job_input.input_msa_paths):
+        if self.job_input.has_msa and \
+           (self.job_input.af3_data_json or \
+            self.job_input.protein_id_to_a3m_path or \
+            self.job_input.input_msa_paths):
             logger.info("MSA data found or indicated in job_input. Skipping MSA generation step.")
             # Return empty dict as signal that generation was skipped but okay
             return {}
 
-        msa_method = self.config.get("msa_mode", "alphafold3").lower()
+        msa_method = self.config.get("msa_method_preference", "alphafold3").lower()
         logger.info(f"MSA generation requested using method: {msa_method}")
 
         if msa_method == "alphafold3":
@@ -95,15 +98,21 @@ class MSAManager:
         if not self.job_input:
             return None
         
-        # Create a modified JobInput that *doesn't* contain any MSA paths
-        temp_job_input_dict = self.job_input.copy() # Shallow copy
-        temp_job_input_dict["input_msa_paths"] = {} # Clear input paths
-        if "protein_id_to_a3m_path" in temp_job_input_dict:
-            del temp_job_input_dict["protein_id_to_a3m_path"] # Clear generated paths
-        # We also need to make sure the sequence dictionaries themselves don't contain msa paths
-        # The current _generate_af3_json logic should handle this correctly if input_msa_paths is empty.
-        
-        temp_job_input_obj = JobInput(**temp_job_input_dict)
+        # Create a new JobInput that *doesn't* contain any MSA paths or existing MSA data for the temp config
+        temp_job_input_obj = JobInput(
+            name_stem=self.job_input.name_stem + "_msa_gen", # Ensure a unique name for temp files
+            sequences=self.job_input.sequences,
+            raw_input_type=self.job_input.raw_input_type, # Keep original type for context, though we force AF3 JSON out
+            input_msa_paths={}, # Explicitly empty
+            constraints=None, # Not relevant for AF3 MSA pipeline
+            has_msa=False, # Explicitly False for MSA generation run
+            af3_data_json=None, # Explicitly None
+            protein_id_to_a3m_path={}, # Explicitly empty
+            model_seeds=None, # Not relevant for MSA pipeline only
+            bonded_atom_pairs=None, # Not relevant for MSA pipeline only
+            is_boltz_config=False,
+            is_af3_msa_config_only=True # Mark this as an MSA-only config
+        )
         
         # Generate the JSON in the intermediate directory
         try:
