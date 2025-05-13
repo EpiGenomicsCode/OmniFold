@@ -306,7 +306,7 @@ def main():
     
     try:
         orchestrator = Orchestrator(config=config, output_dir=config["output_dir"])
-        orchestrator.run_pipeline(input_file_path=config["input_file"])
+        orchestrator.run_pipeline(input_file=config["input_file"])
         logger.info("Pipeline execution finished.")
     except Exception as e:
         logger.error(f"Pipeline execution failed: {e}", exc_info=True) # Log traceback

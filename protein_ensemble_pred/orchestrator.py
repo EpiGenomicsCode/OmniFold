@@ -33,9 +33,9 @@ class Orchestrator:
         self.input_handler = InputHandler()
         self.msa_output_dir = os.path.join(output_dir, "msa_generation")
         os.makedirs(self.msa_output_dir, exist_ok=True)
-        self.msa_manager = MSAManager(config, {}, self.msa_output_dir)
+        self.msa_manager = MSAManager(self.config, str(self.msa_output_dir))
         self.config_generator = ConfigGenerator()
-        self.runner = Runner(config)
+        self.runner = Runner(self.config)
 
         # Create output directory structure
         os.makedirs(output_dir, exist_ok=True)
@@ -78,7 +78,6 @@ class Orchestrator:
             model_name=model_name,
             input_config_file_host_path=config_path,
             model_specific_output_dir_host_path=output_dir,
-            job_input={},
             gpu_id=gpu_id
         )
 
@@ -101,7 +100,7 @@ class Orchestrator:
             self.msa_manager.job_input = job_input
             
             msa_result = None
-            if not job_input.get("has_msa", False):
+            if not job_input.has_msa:
                 logger.info("MSA not found in input, generating alignments...")
                 msa_result = self.msa_manager.generate_msa()
                 
@@ -110,28 +109,23 @@ class Orchestrator:
                     return False
                 
                 if msa_result.get("af3_data_json"):
-                    job_input["af3_data_json"] = msa_result["af3_data_json"]
-                # If MSAManager (e.g. ColabFold mode) directly provides a dict of ID -> a3m_path
+                    job_input.af3_data_json = msa_result["af3_data_json"]
                 if isinstance(msa_result.get("protein_id_to_a3m_path"), dict):
-                    job_input["protein_id_to_a3m_path"] = msa_result["protein_id_to_a3m_path"]
-                # Backwards compatibility/alternative: if a single a3m_path is given (e.g. for monomer from ColabFold)
-                elif msa_result.get("a3m_path") and "protein_id_to_a3m_path" not in job_input:
-                    # Try to associate it with the first protein ID if not a proper dict
-                    # This part might need better logic if sequences are available in job_input here
-                    first_protein_id = job_input.get("sequences", [{}])[0].get("protein_id", "unknown_protein_1")
-                    job_input["protein_id_to_a3m_path"] = {first_protein_id: msa_result["a3m_path"]}
+                    job_input.protein_id_to_a3m_path = msa_result["protein_id_to_a3m_path"]
+                elif msa_result.get("a3m_path") and not job_input.protein_id_to_a3m_path:
+                    first_protein_id = job_input.sequences[0].chain_id if job_input.sequences else "unknown_protein_1"
+                    job_input.protein_id_to_a3m_path = {first_protein_id: msa_result["a3m_path"]}
 
             # Extract A3Ms for Boltz if an AF3 JSON is available (either from input or MSA step)
             # and we don't yet have the per-protein A3M path dictionary.
-            if job_input.get("af3_data_json") and not job_input.get("protein_id_to_a3m_path"):
+            if job_input.af3_data_json and not job_input.protein_id_to_a3m_path:
                 logger.info("AF3 JSON found, extracting A3Ms for Boltz for each protein...")
-                # The msa_output_dir is where individual msa_X.a3m files will be stored
                 protein_id_to_a3m_path_dict = extract_all_protein_a3ms_from_af3_json(
-                    job_input["af3_data_json"], 
+                    job_input.af3_data_json, 
                     self.msa_output_dir 
                 )
                 if protein_id_to_a3m_path_dict is not None: # None indicates critical error
-                    job_input["protein_id_to_a3m_path"] = protein_id_to_a3m_path_dict
+                    job_input.protein_id_to_a3m_path = protein_id_to_a3m_path_dict
                     logger.info(f"A3Ms for Boltz extracted: {len(protein_id_to_a3m_path_dict)} files.")
                     if not protein_id_to_a3m_path_dict:
                         logger.warning("No A3Ms were extracted from the AF3 JSON, though no critical error occurred (e.g., no proteins or no MSAs in JSON).")
@@ -139,12 +133,12 @@ class Orchestrator:
                     logger.error("Critical error extracting A3Ms from AF3 JSON for Boltz. Cannot proceed.")
                     return False
 
-            # ConfigGenerator will need to look for job_input["protein_id_to_a3m_path"]
-            # and use it to populate the Boltz config. We need to ensure that required MSAs are present.
             # For now, we assume ConfigGenerator will handle missing MSAs for specific proteins if Boltz allows it.
-            if not job_input.get("protein_id_to_a3m_path") and not job_input.get("is_boltz_config", False) and not job_input.get("is_af3_msa_config_only", False):
-                 logger.warning("No per-protein A3M paths found or generated. Boltz prediction might fail or run MSA-free if not configured otherwise.")
-                 # Not returning False here, as Boltz might be run MSA-free or AF3 only is intended.
+            if not job_input.protein_id_to_a3m_path and \
+               not job_input.is_boltz_config and \
+               not job_input.is_af3_msa_config_only:
+                logger.warning("No per-protein A3M paths found or generated. Boltz prediction might fail or run MSA-free if not configured otherwise.")
+                # Not returning False here, as Boltz might be run MSA-free or AF3 only is intended.
 
             logger.info("Generating model configurations...")
             configs = self.config_generator.generate_configs(job_input)
@@ -262,4 +256,4 @@ class Orchestrator:
                 f.write(f"Boltz-1: {os.path.relpath(self.boltz_output_dir, self.output_dir)}\n")
             logger.info(f"Prediction summary written to: {summary_path}")
         except IOError as e:
-            logger.error(f"Failed to write summary file {summary_path}: {e}") 
+            logger.error(f"Failed to write summary file {summary_path}: {e}")

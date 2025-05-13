@@ -56,7 +56,6 @@ class Runner:
         model_name: str,
         input_config_file_host_path: str,
         model_specific_output_dir_host_path: str,
-        job_input: Dict[str, Any],
         gpu_id: Optional[int] = None
     ) -> Tuple[int, str, str]:
         """
@@ -66,7 +65,6 @@ class Runner:
             model_name: Name of the model ("alphafold3" or "boltz1").
             input_config_file_host_path: Absolute path to the model-specific input config file (JSON/YAML) on the host.
             model_specific_output_dir_host_path: Absolute path to the dedicated output directory for this model on the host.
-            job_input: The standardized job input dictionary from InputHandler.
             gpu_id: The specific GPU ID to assign for this model run. If None, GPU is not specifically assigned.
 
         Returns:

@@ -1,14 +1,14 @@
 import os
-import json # For loading JSON file content
+import json  # For loading JSON file content
 import pyfastx
-from typing import List, Optional, Dict, Union
+from typing import List, Optional, Dict, Union, Any
 from pathlib import Path
-import yaml # Added import
+import yaml  # Added import
 import logging
 
 from .util.definitions import JobInput, SequenceInfo, idgen, as_entity, SequenceType
-from .af3_models import Af3Input as Af3PydanticModel # Rename to avoid confusion with function
-from .af3_models import Protein, RNA, DNA, Ligand # To identify sequence item types
+from .af3_models import Af3Input as Af3PydanticModel  # Rename to avoid confusion with function
+from .af3_models import Protein, RNA, DNA, Ligand  # To identify sequence item types
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +43,8 @@ class InputHandler:
                 logger.info(f"Attempting to parse as AlphaFold3 JSON: {input_filepath}")
                 return self._parse_af3_json(input_path, name_stem)
             elif file_extension in [".yaml", ".yml"]:
-                 logger.info(f"Attempting to parse as Boltz YAML: {input_filepath}")
-                 # Add placeholder or call specific parser if Boltz YAML is distinct
-                 return self._parse_boltz_yaml(input_path, name_stem)
+                logger.info(f"Attempting to parse as Boltz YAML: {input_filepath}")
+                return self._parse_boltz_yaml(input_path, name_stem)
             else:
                 logger.error(f"Unsupported file extension: {file_extension}. Please use FASTA, AF3 JSON, or Boltz YAML.")
                 return None
@@ -76,9 +75,9 @@ class InputHandler:
                             sequences_info.append(as_entity(full_sequence, chain_id, current_original_name))
                         
                         # Start new sequence
-                        current_original_name = line[1:].strip() # Name is everything after '>'
+                        current_original_name = line[1:].strip()  # Name is everything after '>'
                         current_sequence_parts = []
-                    elif current_original_name is not None: # Only append if we are inside a sequence block
+                    elif current_original_name is not None:  # Only append if we are inside a sequence block
                         # Filter out non-alphabet characters (safer than just upper)
                         cleaned_line = ''.join(filter(str.isalpha, line))
                         current_sequence_parts.append(cleaned_line)
@@ -101,8 +100,8 @@ class InputHandler:
             )
 
         except StopIteration:
-             logger.error(f"Exceeded maximum number of chain IDs (ZZ). Too many sequences in FASTA: {file_path}")
-             return None
+            logger.error(f"Exceeded maximum number of chain IDs (ZZ). Too many sequences in FASTA: {file_path}")
+            return None
         except Exception as e:
             logger.error(f"Error parsing FASTA file {file_path}: {e}", exc_info=True)
             return None
@@ -116,27 +115,27 @@ class InputHandler:
         input_msa_paths: Dict[str, str] = {}
         model_seeds: Optional[List[int]] = None
         bonded_atom_pairs: Optional[List[Any]] = None
-        has_msa_flag = False # Flag if any MSA path is found
+        has_msa_flag = False  # Flag if any MSA path is found
 
         try:
             with open(file_path, 'r') as f:
                 data = json.load(f)
-
+            
             # Basic validation using Pydantic model if desired (optional but recommended)
             try:
                 # Pass Path object to Pydantic model if it expects it
-                af3_input_model = Af3Input(**data)
+                af3_input_model = Af3PydanticModel(**data)
                 # Use validated data from the model
                 data = af3_input_model.model_dump(by_alias=True) 
-            except Exception as pydantic_error: # Catch validation errors specifically
-                 logger.warning(f"Input JSON {file_path} failed Pydantic validation for Af3Input: {pydantic_error}. Attempting to parse leniently.")
-                 # Continue with raw dictionary `data`, but parsing might fail later
+            except Exception as pydantic_error:  # Catch validation errors specifically
+                logger.warning(f"Input JSON {file_path} failed Pydantic validation for Af3Input: {pydantic_error}. Attempting to parse leniently.")
+                # Continue with raw dictionary `data`, but parsing might fail later
 
             job_name_from_json = data.get("name", name_stem)
             model_seeds = data.get("modelSeeds")
             bonded_atom_pairs = data.get("bondedAtomPairs")
 
-            chain_id_generator = idgen() # Needed if IDs are missing?
+            chain_id_generator = idgen()  # Needed if IDs are missing?
             processed_ids = set()
 
             for entity in data.get("sequences", []):
@@ -146,8 +145,8 @@ class InputHandler:
                 
                 entity_type, entity_data = list(entity.items())[0]
                 if not isinstance(entity_data, dict):
-                     logger.warning(f"Skipping invalid entity data for type '{entity_type}': {entity_data}")
-                     continue
+                    logger.warning(f"Skipping invalid entity data for type '{entity_type}': {entity_data}")
+                    continue
 
                 raw_ids = entity_data.get("id")
                 chain_ids: List[str]
@@ -163,14 +162,14 @@ class InputHandler:
                         chain_ids = [next(chain_id_generator)]
                         logger.warning(f"Assigned automatic ID: {chain_ids[0]}")
                     except StopIteration:
-                         logger.error(f"Ran out of chain IDs while parsing AF3 JSON: {file_path}")
-                         return None
+                        logger.error(f"Ran out of chain IDs while parsing AF3 JSON: {file_path}")
+                        return None
                 
                 # Determine sequence and type
                 seq: Optional[str] = None
                 seq_type: SequenceType = "unknown"
                 msa_path: Optional[str] = None
-                original_name = f"{entity_type}_{'_'.join(chain_ids)}" # Construct a name
+                original_name = f"{entity_type}_{'_'.join(chain_ids)}"  # Construct a name
 
                 if entity_type == "protein":
                     seq = entity_data.get("sequence")
@@ -179,40 +178,33 @@ class InputHandler:
                 elif entity_type == "rna":
                     seq = entity_data.get("sequence")
                     seq_type = "rna"
-                    # msa_path = entity_data.get("unpairedMsaPath") # If DNA MSAs become supported
                 elif entity_type == "dna":
                     seq = entity_data.get("sequence")
                     seq_type = "dna"
-                    # msa_path = entity_data.get("unpairedMsaPath") # If DNA MSAs become supported
                 elif entity_type == "ligand":
                     if "ccdCodes" in entity_data and isinstance(entity_data["ccdCodes"], list) and entity_data["ccdCodes"]:
-                        seq = entity_data["ccdCodes"][0] # Take the first CCD code as the sequence identifier
+                        seq = entity_data["ccdCodes"][0]  # Take the first CCD code as the sequence identifier
                         seq_type = "ligand_ccd"
                     elif "smiles" in entity_data and isinstance(entity_data["smiles"], str):
                         seq = entity_data["smiles"]
                         seq_type = "ligand_smiles"
                     else:
-                         logger.warning(f"Ligand entity has invalid/missing ccdCodes or smiles: {entity_data}. Skipping.")
-                         continue
+                        logger.warning(f"Ligand entity has invalid/missing ccdCodes or smiles: {entity_data}. Skipping.")
+                        continue
                 else:
                     logger.warning(f"Unsupported entity type '{entity_type}' in AF3 JSON. Skipping.")
                     continue
 
                 if seq is None:
-                     logger.warning(f"Entity type '{entity_type}' with ID(s) '{chain_ids}' is missing sequence data. Skipping.")
-                     continue
+                    logger.warning(f"Entity type '{entity_type}' with ID(s) '{chain_ids}' is missing sequence data. Skipping.")
+                    continue
                 
                 # Add sequence info for each ID (handles homomers)
                 for chain_id in chain_ids:
                     if chain_id in processed_ids:
-                         logger.warning(f"Duplicate chain ID '{chain_id}' encountered in AF3 JSON. Check input format. Skipping duplicate.")
-                         continue
+                        logger.warning(f"Duplicate chain ID '{chain_id}' encountered in AF3 JSON. Check input format. Skipping duplicate.")
+                        continue
                     
-                    # Use as_entity for basic validation/normalization of sequence based on type?
-                    # seq_info = as_entity(seq, chain_id, original_name)
-                    # if seq_info.molecule_type != seq_type and seq_type != "unknown":
-                    #      logger.warning(f"Guessed type {seq_info.molecule_type} differs from JSON type {seq_type} for ID {chain_id}")
-                    # For now, trust the JSON type directly:
                     seq_info = SequenceInfo(original_name=original_name, sequence=seq, molecule_type=seq_type, chain_id=chain_id)
                     sequences_info.append(seq_info)
                     
@@ -234,23 +226,24 @@ class InputHandler:
                 sequences=sequences_info,
                 raw_input_type="af3_json",
                 input_msa_paths=input_msa_paths,
-                constraints=None, # AF3 JSON doesn't have constraints like Boltz
-                # Store seeds and bonds if they exist
-                **({"model_seeds": model_seeds} if model_seeds else {}),
-                **({"bonded_atom_pairs": bonded_atom_pairs} if bonded_atom_pairs else {})
+                constraints=None,  # AF3 JSON doesn't have constraints like Boltz
+                model_seeds=model_seeds,
+                bonded_atom_pairs=bonded_atom_pairs
             )
-            # Set has_msa flag based on whether paths were found
-            if has_msa_flag:
-                job_input.__dict__["has_msa"] = True # Add flag if not default
+            
+            # Set has_msa flag based on whether paths were found or content exists
+            has_msa_content_or_paths = has_msa_flag
+            
             # Check if the input file looks like a full AF3 _data.json (contains MSA strings)
-            # This is a simple heuristic: check if ANY protein has a non-empty unpairedMsa string
             if any(
                 isinstance(ent, dict) and ent.get("protein", {}).get("unpairedMsa") 
                 for ent in data.get("sequences", [])
             ):
-                 job_input.__dict__["af3_data_json"] = str(file_path.resolve()) 
-                 job_input.__dict__["has_msa"] = True # Has MSA *content*
-                 logger.info("Input JSON appears to contain MSA content (unpairedMsa fields found). Setting af3_data_json path.")
+                job_input.af3_data_json = str(file_path.resolve())
+                has_msa_content_or_paths = True
+                logger.info("Input JSON appears to contain MSA content (unpairedMsa fields found). Setting af3_data_json path.")
+
+            job_input.has_msa = has_msa_content_or_paths
 
             return job_input
 
@@ -292,8 +285,8 @@ class InputHandler:
                 
                 entity_type, entity_data = list(entity.items())[0]
                 if not isinstance(entity_data, dict):
-                     logger.warning(f"Skipping invalid entity data for type '{entity_type}': {entity_data}")
-                     continue
+                    logger.warning(f"Skipping invalid entity data for type '{entity_type}': {entity_data}")
+                    continue
                 
                 chain_id = entity_data.get("id")
                 if not chain_id or not isinstance(chain_id, str):
@@ -312,11 +305,10 @@ class InputHandler:
                 if entity_type == "protein":
                     seq = entity_data.get("sequence")
                     seq_type = "protein"
-                    msa_path = entity_data.get("msa") # Boltz uses "msa" key
+                    msa_path = entity_data.get("msa")  # Boltz uses "msa" key
                 elif entity_type == "rna":
                     seq = entity_data.get("sequence")
                     seq_type = "rna"
-                    # msa_path = entity_data.get("msa") # If Boltz supports RNA MSA
                 elif entity_type == "dna":
                     seq = entity_data.get("sequence")
                     seq_type = "dna"
@@ -328,15 +320,15 @@ class InputHandler:
                         seq = entity_data["smiles"]
                         seq_type = "ligand_smiles"
                     else:
-                         logger.warning(f"Ligand entity has invalid/missing ccd or smiles: {entity_data}. Skipping.")
-                         continue
+                        logger.warning(f"Ligand entity has invalid/missing ccd or smiles: {entity_data}. Skipping.")
+                        continue
                 else:
                     logger.warning(f"Unsupported entity type '{entity_type}' in Boltz YAML. Skipping.")
                     continue
 
                 if seq is None:
-                     logger.warning(f"Entity type '{entity_type}' with ID '{chain_id}' is missing sequence data. Skipping.")
-                     continue
+                    logger.warning(f"Entity type '{entity_type}' with ID '{chain_id}' is missing sequence data. Skipping.")
+                    continue
 
                 seq_info = SequenceInfo(original_name=original_name, sequence=seq, molecule_type=seq_type, chain_id=chain_id)
                 sequences_info.append(seq_info)
@@ -358,14 +350,12 @@ class InputHandler:
                 sequences=sequences_info,
                 raw_input_type="boltz_yaml",
                 input_msa_paths=input_msa_paths,
-                constraints=constraints
+                constraints=constraints,
+                is_boltz_config=True # Set flag for Boltz YAML input
             )
-            if has_msa_flag:
-                job_input.__dict__["has_msa"] = True # Add flag if not default
+            if has_msa_flag: # if input_msa_paths is populated
+                job_input.has_msa = True
                 
-            # Boltz YAML is less likely to contain full MSA *content* like AF3 data.json
-            # So we don't set af3_data_json path here.
-            
             return job_input
 
         except yaml.YAMLError as e:

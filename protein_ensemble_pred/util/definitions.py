@@ -27,7 +27,14 @@ class JobInput:
     sequences: List[SequenceInfo]
     raw_input_type: Literal["fasta", "af3_json", "boltz_yaml"]
     input_msa_paths: Dict[str, str] = field(default_factory=dict)  # chain_id -> msa_path
-    constraints: List[Dict[str, Any]] | None = None  # For Boltz YAML constraints
+    constraints: Optional[List[Dict[str, Any]]] = None  # For Boltz YAML constraints
+    has_msa: bool = False # Default to False
+    af3_data_json: Optional[str] = None # Path to an AF3 data.json (if input or from MSA step)
+    protein_id_to_a3m_path: Dict[str, str] = field(default_factory=dict) # chain_id -> a3m_path for Boltz
+    model_seeds: Optional[List[int]] = None # From AF3 JSON
+    bonded_atom_pairs: Optional[List[Any]] = None # From AF3 JSON
+    is_boltz_config: bool = False # Flag if input was Boltz config (affects MSA logic)
+    is_af3_msa_config_only: bool = False # Flag if input was AF3 config and just for MSA (not prediction)
 
     def __post_init__(self):
         # Ensure raw_input_type is one of the allowed literals
