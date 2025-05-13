@@ -178,7 +178,7 @@ class MSAManager:
         cmd.extend(["-B", f"{temp_input_json_path.parent.resolve()}:/app/input:ro"])
         cmd.extend(["-B", f"{af3_msa_output_dir.resolve()}:{container_output_dir}"]) 
         # Bind DBs - Use the path from the main config
-        db_dir_host = self.config.get("alphafold_database_dir")
+        db_dir_host = self.config.get("alphafold3_database_dir")
         if db_dir_host and Path(db_dir_host).is_dir():
             cmd.extend(["-B", f"{Path(db_dir_host).resolve()}:{container_db_dir}:ro"])
         else:
