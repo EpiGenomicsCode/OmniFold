@@ -195,13 +195,17 @@ class MSAManager:
         cmd.append(af3_sif_path)
 
         # Command arguments for run_alphafold.py inside container
-        cmd.extend([
+        run_script_args = [
             f"--json_path={container_input_json}",
             f"--output_dir={container_output_dir}",
             f"--model_dir={container_model_dir}",
             "--run_data_pipeline=True",
             "--run_inference=False", 
-        ])
+        ]
+        if db_dir_host and Path(db_dir_host).is_dir(): # db_dir_host is from self.config.get("alphafold3_database_dir")
+            run_script_args.append(f"--db_dir={container_db_dir}")
+        
+        cmd.extend(run_script_args)
 
         # 4. Execute command
         exit_code, stdout, stderr = self._run_command(cmd)
