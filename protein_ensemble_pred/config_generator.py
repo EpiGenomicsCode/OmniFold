@@ -179,18 +179,11 @@ class ConfigGenerator:
             # This ensures AF3 always gets seeds. Orchestrator/CLI handles default seed logic.
             current_model_seeds = job_input.model_seeds
             if current_model_seeds is None:
-                 # Fallback to a single random seed if no seeds are specified anywhere.
-                 # This path is typically for FASTA input without specific seed CLI args.
-                 # If AF3 input JSON had seeds, job_input.model_seeds would be populated.
-                 # If CLI has default seed, Orchestrator should ensure it's in job_input.model_seeds.
-                 default_seed_from_cli = cli_config.get("default_seed") # Assuming cli_config is available or passed
-                 if default_seed_from_cli is not None: # Check if cli_config is accessible here
-                    current_model_seeds = [default_seed_from_cli]
-                    logger.info(f"Using default CLI seed for AF3 JSON generation: {current_model_seeds}")
-                 else:
-                    current_model_seeds = [random.randint(1, 100000)]
-                    logger.info(f"Generating random seed for AF3 JSON: {current_model_seeds}")
-
+                 # Fallback to a single random seed if no seeds are specified anywhere for this job_input.
+                 # For the temp AF3 JSON for MSA, job_input.model_seeds is explicitly None.
+                 # A random seed here is fine as the MSA pipeline is deterministic for fixed inputs.
+                 current_model_seeds = [random.randint(1, 100000)]
+                 logger.info(f"Generating random seed for AF3 JSON ({filename}): {current_model_seeds}")
 
             af3_input_data = Af3Input(
                 name=job_input.name_stem,
