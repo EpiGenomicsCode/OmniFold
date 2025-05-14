@@ -3,6 +3,7 @@ import logging
 import threading
 from typing import Any, Dict, List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 from .input_handler import InputHandler
 from .msa_manager import MSAManager
@@ -141,7 +142,7 @@ class Orchestrator:
                 # Not returning False here, as Boltz might be run MSA-free or AF3 only is intended.
 
             logger.info("Generating model configurations...")
-            configs = self.config_generator.generate_configs(job_input)
+            configs = self.config_generator.generate_configs(job_input, Path(self.output_dir))
             if not configs:
                 logger.error("Failed to generate model configurations.")
                 return False
