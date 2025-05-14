@@ -139,8 +139,6 @@ class Runner:
                 input_config_file_host_path,
                 "--out_dir", model_specific_output_dir_host_path,
             ]
-            if gpu_id is not None:
-                model_command.append("--use_gpu")
 
             # Add Boltz-1 specific parameters from config
             if self.config.get("boltz_recycling_steps") is not None:

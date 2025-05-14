@@ -118,15 +118,13 @@ class ConfigGenerator:
                 if seq_info.molecule_type == "protein":
                     protein_chain_args = common_chain_args.copy()
                     if msa_path_for_chain: 
-                        protein_chain_args["unpairedMsaPath"] = str(Path(msa_path_for_chain).resolve()) # Use absolute path
-                        # AF3 requires pairedMsa field to be present if unpairedMsaPath is, even if empty.
-                        # Setting to empty string signifies we want to use the unpairedMsa but run pairedMSA-free.
-                        # If no msa_path_for_chain, let AF3 pipeline handle it (or run MSA-free if pipeline disabled)
-                        # We assume pairedMsa is handled by the AF3 data pipeline if run, or not needed otherwise.
-                        protein_chain_args["pairedMsaPath"] = None # Explicitly null if not using our MSA?
-                        protein_chain_args["pairedMsa"] = "" # Crucial: Set pairedMsa to empty string if unpairedMsaPath is provided
+                        protein_chain_args["unpairedMsaPath"] = str(Path(msa_path_for_chain).resolve()) 
+                        protein_chain_args["pairedMsa"] = f">query\n{seq_info.sequence}\n"
                     else:
-                        # Let AF3 pipeline handle it if enabled, or run MSA free
+                        # If no external MSA is provided, do not include MSA-related fields.
+                        # AF3 will run MSA-free or use its internal pipeline if those flags are set (not our case for inference).
+                        # For pure inference with no precomputed MSA and no pipeline, it would likely also fail.
+                        # However, our logic ensures msa_path_for_chain IS populated if MSAs were generated/extracted.
                         pass 
                     
                     protein_chain = ProteinChain(**protein_chain_args)
