@@ -215,9 +215,14 @@ class MSAManager:
             logger.error(f"AlphaFold 3 MSA pipeline failed with exit code {exit_code}.")
             return None
         
-        # Expect output JSON named based on the *original* stem used in the temp JSON
-        expected_output_filename = f"{temp_input_json_path.stem}_data.json"
-        output_data_json_path = af3_msa_output_dir / expected_output_filename
+        # Expect output JSON to be in a subdirectory named after the input JSON's stem,
+        # and the file itself is also named <input_stem>_data.json
+        input_json_stem = temp_input_json_path.stem 
+        # af3_msa_output_dir is the HOST path to what was /app/output in container
+        # AF3 creates a subdirectory inside this /app/output based on input_json_stem
+        expected_output_subdirectory = af3_msa_output_dir / input_json_stem
+        expected_output_filename = f"{input_json_stem}_data.json"
+        output_data_json_path = expected_output_subdirectory / expected_output_filename
         
         if output_data_json_path.is_file():
             logger.info(f"AlphaFold 3 MSA data JSON found at: {output_data_json_path.resolve()}")
