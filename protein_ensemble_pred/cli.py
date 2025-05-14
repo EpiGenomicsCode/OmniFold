@@ -171,8 +171,8 @@ def main():
         "--af3_buckets",
         type=str,
         nargs='+',
-        default=['256', '512', '768', '1024', '1280', '1536', '2048', '2560', '3072', '3584', '4096', '4608', '5120'],
-        help="Token sizes for caching compilations in AlphaFold3 (default: standard list)."
+        default=None,
+        help="(Optional) Token sizes for caching compilations in AlphaFold3. If not provided, AF3 defaults are used."
     )
 
     # --- Boltz-1 Specific Parameters ---
@@ -271,7 +271,6 @@ def main():
         "af3_save_embeddings": args.af3_save_embeddings,
         "af3_max_template_date": args.af3_max_template_date,
         "af3_conformer_max_iterations": args.af3_conformer_max_iterations,
-        "af3_buckets": args.af3_buckets,
 
         # Boltz-1 specific execution parameters
         "boltz_recycling_steps": args.boltz_recycling_steps,
@@ -285,6 +284,10 @@ def main():
 
         # GPU detection/assignment  needs to go here.
     }
+    
+    # Conditionally add af3_buckets to config
+    if args.af3_buckets is not None:
+        config["af3_buckets"] = args.af3_buckets
     
     # Add a check for required paths within the config that Orchestrator/submodules need
     required_paths = [
