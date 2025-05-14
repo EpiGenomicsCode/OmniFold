@@ -128,3 +128,54 @@ def extract_all_protein_a3ms_from_af3_json(json_path: str, output_dir: str) -> O
     except Exception as e:
         logger.error(f"An unexpected error occurred during A3M extraction: {e}", exc_info=True)
         return None 
+
+def is_a3m_singleton(a3m_file_path: str, query_sequence: str) -> bool:
+    """
+    Checks if an A3M file contains only a single sequence (the query) and no other alignments.
+
+    Args:
+        a3m_file_path: Path to the A3M file.
+        query_sequence: The expected query sequence (without gaps).
+
+    Returns:
+        True if the A3M is a singleton (only query), False otherwise.
+    """
+    try:
+        with open(a3m_file_path, 'r') as f:
+            lines = [line.strip() for line in f if line.strip()] # Read non-empty, stripped lines
+        
+        if not lines: # Empty file
+            return False
+
+        num_sequences = 0
+        first_sequence_lines = []
+        in_first_sequence = False
+
+        for line in lines:
+            if line.startswith('>'):
+                num_sequences += 1
+                if num_sequences > 1:
+                    return False # More than one sequence entry
+                in_first_sequence = True
+            elif in_first_sequence:
+                first_sequence_lines.append(line)
+            # If line doesn't start with '>' and we are not in_first_sequence, it's malformed or unexpected content before first header.
+            # However, typical A3M starts with a header.
+
+        if num_sequences != 1:
+            return False # No sequence or more than one
+
+        # Reconstruct the first sequence from the file, removing gaps
+        first_sequence_from_file = "".join(first_sequence_lines).replace("-", "").replace(".", "")
+        
+        # Compare with the provided query sequence (also ungapped)
+        clean_query_sequence = query_sequence.replace("-", "").replace(".", "")
+        
+        return first_sequence_from_file.upper() == clean_query_sequence.upper()
+
+    except FileNotFoundError:
+        logger.warning(f"A3M file not found for singleton check: {a3m_file_path}")
+        return False # Or raise? For now, treat as not a valid multi-sequence MSA
+    except Exception as e:
+        logger.error(f"Error checking A3M file {a3m_file_path} for singleton status: {e}")
+        return False # Treat as not a valid multi-sequence MSA in case of error 
