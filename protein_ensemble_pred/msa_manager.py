@@ -103,6 +103,7 @@ class MSAManager:
             name_stem=self.job_input.name_stem + "_msa_gen", # Ensure a unique name for temp files
             sequences=self.job_input.sequences,
             raw_input_type=self.job_input.raw_input_type, # Keep original type for context, though we force AF3 JSON out
+            output_dir=str(self.msa_tmp_dir), # Provide the intermediate dir as output_dir context
             input_msa_paths={}, # Explicitly empty
             constraints=None, # Not relevant for AF3 MSA pipeline
             has_msa=False, # Explicitly False for MSA generation run
@@ -117,9 +118,11 @@ class MSAManager:
         # Generate the JSON in the intermediate directory
         try:
             # Use a distinct name for the temp file
+            temp_json_filename = f"{temp_job_input_obj.name_stem}_af3_msa_pipeline_input.json" # More descriptive name
             temp_json_path = self.config_generator._generate_af3_json_from_job_input(
                 temp_job_input_obj, 
-                self.msa_tmp_dir # Save in intermediate dir
+                self.msa_tmp_dir, # Save in intermediate dir
+                filename=temp_json_filename # Pass the explicit filename
             )
             if temp_json_path:
                  logger.info(f"Generated temporary AF3 JSON for MSA pipeline: {temp_json_path}")
