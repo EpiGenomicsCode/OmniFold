@@ -47,12 +47,18 @@ The following paths must be provided as command-line arguments when running the 
 
 1.  **Clone the repository:**
     ```bash
-    git clone <repository_url>
-    cd protein-ensemble-pred
+    git clone https://github.com/EpiGenomicsCode/Protein-Ensemble-Inference.git
+    cd Protein-Ensemble-Inference
     ```
-2.  **Install Python dependencies:**
+2.  **Install the package and its dependencies:**
+
+    For a standard installation:
     ```bash
-    pip install -r requirements.txt
+    pip install .
+    ```
+    For an editable (developer) installation:
+    ```bash
+    pip install -e .
     ```
 3.  **Ensure Singularity Images and Data are Accessible:**
     *   Download or build the AlphaFold3 and Boltz-1 Singularity images. **We recommend using the pre-built images available from [https://github.com/EpiGenomicsCode/AF3-Container](https://github.com/EpiGenomicsCode/AF3-Container).** Place the `.sif` files in accessible locations on your HPC system.
@@ -61,10 +67,10 @@ The following paths must be provided as command-line arguments when running the 
 
 ## Basic Usage
 
-To run a prediction:
+To run a prediction, use the `protein-ensemble-pred` command followed by your desired arguments:
 
 ```bash
-python -m protein_ensemble_pred.cli \
+protein-ensemble-pred \
     --input_file /path/to/your/input.fasta \
     --output_dir /path/to/your/output_directory \
     --alphafold3_sif_path /path/to/alphafold3.sif \
@@ -76,14 +82,15 @@ python -m protein_ensemble_pred.cli \
 
 ### Example Command:
 
+The following command runs a prediction for `tests/files/multi_chain_1.fasta`, saving results to `results/multi_chain_1_output`, and specifies paths for Singularity images, model weights, and databases. It uses the `alphafold3` method for MSA generation and sets the log level to `INFO`.
+
 ```bash
-python -m protein_ensemble_pred.cli \
-    --input_file examples/T1084.fasta \
-    --output_dir results/T1084_output \
-    --alphafold3_sif_path /apps/containers/alphafold3.sif \
-    --boltz1_sif_path /apps/containers/boltz1.sif \
-    --alphafold3_model_weights_dir /data/alphafold3_params \
-    --alphafold3_database_dir /data/alphafold_databases \
+protein-ensemble-pred --input_file tests/files/multi_chain_1.fasta \
+    --output_dir results/multi_chain_1_output \
+    --alphafold3_sif_path /../containers/alphafold3_x86.sif \
+    --boltz1_sif_path /../containers/boltz_x86.sif \
+    --alphafold3_model_weights_dir /../alphafold3_weights \
+    --alphafold3_database_dir /../databases \
     --msa_method alphafold3 \
     --log_level INFO
 ```
@@ -91,7 +98,7 @@ python -m protein_ensemble_pred.cli \
 Refer to the command-line help for a full list of options and their descriptions:
 
 ```bash
-python -m protein_ensemble_pred.cli --help
+protein-ensemble-pred --help
 ```
 
 For detailed information on FASTA input formatting, see [docs/fasta.md](docs/fasta.md).
