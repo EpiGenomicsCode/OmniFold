@@ -351,8 +351,7 @@ class ConfigGenerator:
 
             if seq_info.molecule_type == "protein":
                 protein_data = {
-                    # "id": chain_id, # Boltz uses "name" within segment for identifier
-                    "name": chain_id, 
+                    "id": chain_id,
                     "sequence": seq_info.sequence
                 }
                 if msa_path_for_chain:
@@ -368,16 +367,16 @@ class ConfigGenerator:
             elif seq_info.molecule_type == "rna":
                 # entity["rna"] = {"id": chain_id, "sequence": seq_info.sequence}
                 # Boltz YAML structure for RNA/DNA needs confirmation, assume similar to protein for now if supported
-                segments_list.append({"name": chain_id, "sequence": seq_info.sequence, "type": "rna"})
+                segments_list.append({"id": chain_id, "sequence": seq_info.sequence, "type": "rna"})
             elif seq_info.molecule_type == "dna":
                 # entity["dna"] = {"id": chain_id, "sequence": seq_info.sequence}
-                segments_list.append({"name": chain_id, "sequence": seq_info.sequence, "type": "dna"})
+                segments_list.append({"id": chain_id, "sequence": seq_info.sequence, "type": "dna"})
             elif seq_info.molecule_type == "ligand_smiles":
                 # entity["ligand"] = {"id": chain_id, "smiles": seq_info.sequence}
-                 segments_list.append({"name": chain_id, "smiles": seq_info.sequence, "type": "ligand"})
+                 segments_list.append({"id": chain_id, "smiles": seq_info.sequence, "type": "ligand"})
             elif seq_info.molecule_type == "ligand_ccd":
                 # entity["ligand"] = {"id": chain_id, "ccd": seq_info.sequence}
-                segments_list.append({"name": chain_id, "ccd": seq_info.sequence, "type": "ligand"}) # Boltz might prefer SMILES
+                segments_list.append({"id": chain_id, "ccd": seq_info.sequence, "type": "ligand"}) # Boltz might prefer SMILES
             elif seq_info.molecule_type == "unknown":
                 logger.warning(f"Sequence '{seq_info.original_name}' (chain {chain_id}) has unknown type. Skipping for Boltz YAML.")
                 continue
