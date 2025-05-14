@@ -7,6 +7,7 @@ import yaml
 from pathlib import Path
 
 from .util.definitions import JobInput, SequenceInfo, SequenceType
+from .util.msa_utils import is_a3m_singleton # Import the new helper
 from .af3_models import (
     Af3Input, Protein, ProteinChain, RNA, RNAChain, DNA, DNAChain, Ligand, LigandMolecule,
     MolId, ProtSeq, RNASeq, DNASeq # Type aliases for validation
@@ -355,9 +356,14 @@ class ConfigGenerator:
                     "sequence": seq_info.sequence
                 }
                 if msa_path_for_chain:
-                    protein_data["msa"] = str(Path(msa_path_for_chain).resolve()) # Use absolute path
+                    if is_a3m_singleton(msa_path_for_chain, seq_info.sequence):
+                        protein_data["msa"] = "empty"
+                        logger.info(f"A3M for protein {chain_id} is a singleton. Setting Boltz msa to 'empty'.")
+                    else:
+                        protein_data["msa"] = str(Path(msa_path_for_chain).resolve()) # Use absolute path
                 else:
-                    logger.info(f"No MSA path found for protein {chain_id}. Boltz will run MSA-free or generate its own if configured.")
+                    logger.info(f"No MSA path found for protein {chain_id}. Setting Boltz msa to 'empty'.")
+                    protein_data["msa"] = "empty" # Default to empty if no MSA path
                 entity["protein"] = protein_data
             elif seq_info.molecule_type == "rna":
                 # entity["rna"] = {"id": chain_id, "sequence": seq_info.sequence}
