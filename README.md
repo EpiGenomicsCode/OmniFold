@@ -125,3 +125,8 @@ The application will create the specified output directory. Inside this director
     *   Assigns GPUs to models (one per model if available) for parallel execution, or runs sequentially on a single GPU.
     *   Constructs and executes `singularity run/exec` commands for both AlphaFold3 and Boltz-1, binding necessary directories (input configs, output, model weights, databases).
 5.  **Output Collection:** Gathers results and logs from both model runs into the specified output directory.
+
+## Acknowledgements
+- AlphaFold by DeepMind Technologies Limited
+- The research project is generously funded by Cornell University BRC Epigenomics Core Facility (RRID:SCR_021287), Penn State Institute for Computational and Data Sciences (RRID:SCR_025154) , Penn State University Center for Applications of Artificial Intelligence and Machine Learning to Industry Core Facility (**AIMI**) (RRID:SCR_022867) **and supported by a gift to AIMI research from Dell Technologies.**
+- Computational support was provided by NSF ACCESS to William KM Lai and Gretta Kellogg through BIO230041
