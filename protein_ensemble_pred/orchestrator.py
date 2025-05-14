@@ -147,10 +147,29 @@ class Orchestrator:
                 logger.error("Failed to generate model configurations.")
                 return False
             
-            gpu_assignments = assign_gpus_to_models(2)
+            # Determine number of models to run and assign GPUs
+            num_models_to_run = 0
+            if "af3_config_path" in configs: num_models_to_run +=1
+            if "boltz_config_path" in configs: num_models_to_run +=1
+
+            if num_models_to_run == 0:
+                logger.error("No model configurations available to run.")
+                return False
+
+            gpu_assignments = assign_gpus_to_models(num_models_to_run, force_sequential=self.config.get("run_sequentially", False))
             
+            # Determine max_workers for ThreadPoolExecutor
+            # If sequential is forced or only one unique GPU is assigned, run one at a time.
+            unique_gpu_ids = set(filter(None, gpu_assignments.values()))
+            if self.config.get("run_sequentially", False) or len(unique_gpu_ids) <= 1 and num_models_to_run > 1:
+                max_workers = 1
+                logger.info(f"Executing models sequentially with max_workers=1.")
+            else:
+                max_workers = len(unique_gpu_ids) if unique_gpu_ids else 1 # len(gpu_assignments) could be more than actual GPUs used
+                logger.info(f"Executing models potentially in parallel with max_workers={max_workers} (based on unique GPUs).")
+
             results = {}
-            with ThreadPoolExecutor(max_workers=len(gpu_assignments)) as executor:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = []
                 
                 if "af3_config_path" in configs:
