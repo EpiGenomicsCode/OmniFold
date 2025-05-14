@@ -299,7 +299,7 @@ class ConfigGenerator:
         boltz_config = {
             "name": job_input.name_stem, # Add top-level name
             "version": 1, 
-            "segments": [] # Changed from "sequences" to "segments" for Boltz
+            "sequences": [] 
         }
         # Default sampling settings, can be overridden
         boltz_config["sampling"] = {
@@ -393,7 +393,7 @@ class ConfigGenerator:
             # Still might create a file if only general settings were important, but likely an issue.
             # For now, let it proceed to write an empty segments list if that's the case.
 
-        boltz_config["segments"] = segments_list
+        boltz_config["sequences"] = segments_list 
         
         try:
             with open(yaml_file_path, 'w') as f:

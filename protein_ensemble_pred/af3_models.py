@@ -226,9 +226,8 @@ class ProteinChain(BaseModel):
     pairedMsaPath: Optional[str] = Field(None, alias="pairedMsaPath") # Path to A3M for complexes
     templates: Optional[List[Template]] = None
     # AlphaFold team mentioned that actual MSA content can also be embedded.
-    # For now, sticking to paths as per rbvi.ucsf.edu example.
-    # unpairedMsa: Optional[str] = None # Raw A3M string can also be here
-    # pairedMsa: Optional[str] = None   # Raw A3M string
+    unpairedMsa: Optional[str] = Field(None, alias="unpairedMsa") # Raw A3M string can also be here
+    pairedMsa: Optional[str] = Field(None, alias="pairedMsa")   # Raw A3M string
 
     @model_validator(mode="after")
     def check_modifications(self) -> Self:
@@ -259,6 +258,7 @@ class RNAChain(BaseModel):
     sequence: RNASeq
     modifications: Optional[List[NtModification]] = None
     unpairedMsaPath: Optional[str] = Field(None, alias="unpairedMsaPath")
+    unpairedMsa: Optional[str] = Field(None, alias="unpairedMsa") # Raw A3M string for RNA
 
     @model_validator(mode="after")
     def check_modifications(self) -> Self:
@@ -285,6 +285,7 @@ class DNAChain(BaseModel):
     sequence: DNASeq
     modifications: Optional[List[NtModification]] = None
     unpairedMsaPath: Optional[str] = Field(None, alias="unpairedMsaPath")
+    unpairedMsa: Optional[str] = Field(None, alias="unpairedMsa") # Raw A3M string for DNA
 
     @model_validator(mode="after")
     def check_modifications(self) -> Self:
