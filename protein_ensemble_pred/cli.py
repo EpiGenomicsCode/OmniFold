@@ -276,6 +276,7 @@ def main():
         "boltz_recycling_steps": args.boltz_recycling_steps,
         "boltz_sampling_steps": args.boltz_sampling_steps,
         "boltz_diffusion_samples": args.boltz_diffusion_samples,
+        "boltz_diffusion_samples_is_default": parser.get_default("boltz_diffusion_samples") == args.boltz_diffusion_samples,
         "boltz_step_scale": args.boltz_step_scale,
         "boltz_no_potentials": args.boltz_no_potentials,
         "boltz_write_full_pae": args.boltz_write_full_pae,

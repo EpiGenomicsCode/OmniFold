@@ -142,7 +142,7 @@ class Orchestrator:
                 # Not returning False here, as Boltz might be run MSA-free or AF3 only is intended.
 
             logger.info("Generating model configurations...")
-            configs = self.config_generator.generate_configs(job_input, Path(self.output_dir))
+            configs = self.config_generator.generate_configs(job_input, Path(self.output_dir), self.config)
             if not configs:
                 logger.error("Failed to generate model configurations.")
                 return False
