@@ -141,6 +141,21 @@ class Orchestrator:
                 logger.warning("No per-protein A3M paths found or generated. Boltz prediction might fail or run MSA-free if not configured otherwise.")
                 # Not returning False here, as Boltz might be run MSA-free or AF3 only is intended.
 
+            # Ensure job_input.model_seeds reflects CLI default if no seeds came from input file
+            if job_input.model_seeds is None and self.config.get("default_seed") is not None:
+                default_seed_val = self.config.get("default_seed")
+                # AF3 expects a list of seeds, even if it's just one.
+                # If af3_num_seeds is specified, that takes precedence for *how many* seeds, 
+                # but the base seed can still be default_seed.
+                # For now, let's assume default_seed implies a single seed run if no other seed info.
+                # ConfigGenerator's _generate_af3_json will handle AF3 specific num_seeds from CLI if present.
+                job_input.model_seeds = [int(default_seed_val)]
+                logger.info(f"Propagating CLI default_seed ({default_seed_val}) to job_input.model_seeds for ConfigGenerator.")
+                # Also update num_model_seeds_from_input if it was None, to reflect this one seed. 
+                # This helps Boltz n_preds logic if AF3 seeds weren't from an AF3 JSON.
+                if job_input.num_model_seeds_from_input is None:
+                    job_input.num_model_seeds_from_input = 1 
+
             logger.info("Generating model configurations...")
             configs = self.config_generator.generate_configs(job_input, Path(self.output_dir), self.config)
             if not configs:

@@ -36,6 +36,16 @@ class MSAManager:
         self.job_input: Optional[JobInput] = None # Set by Orchestrator before calling generate_msa
         logger.info(f"MSA_Manager initialized. Intermediate dir: {self.msa_tmp_dir}")
 
+    def _get_internal_name_from_af3_json(self, json_path: Path) -> Optional[str]:
+        """Parses an AF3 JSON and returns the value of its 'name' field."""
+        try:
+            with open(json_path, 'r') as f:
+                data = json.load(f)
+            return data.get("name")
+        except Exception as e:
+            logger.error(f"Failed to parse internal name from {json_path}: {e}")
+            return None
+
     def _run_command(self, cmd: List[str], cwd: Optional[str] = None) -> Tuple[int, str, str]:
         """Runs a shell command and returns exit code, stdout, stderr."""
         logger.info(f"Running command: {' '.join(cmd)}")
@@ -150,28 +160,57 @@ class MSAManager:
     def _run_alphafold3_msa_pipeline(self) -> Optional[Dict[str, Any]]:
         """
         Runs the AlphaFold 3 data pipeline to generate MSAs.
+        Uses user's original AF3 JSON if provided and suitable, otherwise generates a temporary one.
         """
         logger.info("Starting AlphaFold 3 MSA pipeline.")
-        if not self.job_input: return None # Should not happen if called from generate_msa
+        if not self.job_input: return None
 
         af3_sif_path = self.config.get("alphafold3_sif_path")
         if not af3_sif_path or not Path(af3_sif_path).is_file():
             logger.error("AlphaFold 3 SIF path not configured or not found.")
             return None
 
-        # 1. Generate temporary input JSON without MSAs
-        temp_input_json_path = self._generate_temp_af3_json_for_msa()
-        if not temp_input_json_path:
+        temp_input_json_path: Optional[Path] = None
+        internal_json_name_stem: Optional[str] = None
+
+        if self.job_input.raw_input_type == "af3_json" and \
+           self.job_input.original_af3_config_path and \
+           not self.job_input.has_msa: # original_af3_config_path exists and it did NOT have MSAs
+            
+            original_path = Path(self.job_input.original_af3_config_path)
+            if original_path.is_file():
+                temp_input_json_path = original_path
+                internal_json_name_stem = self._get_internal_name_from_af3_json(temp_input_json_path)
+                if not internal_json_name_stem:
+                    logger.error(f"Could not read internal 'name' from user-provided AF3 JSON: {temp_input_json_path}. Cannot determine AF3 output dir name.")
+                    return None
+                logger.info(f"Using user-provided AF3 JSON for MSA pipeline: {temp_input_json_path}. Internal name: {internal_json_name_stem}")
+            else:
+                logger.warning(f"Original AF3 config path {original_path} not found, will generate a temporary one.")
+        
+        if not temp_input_json_path: # Fallback or if input was not AF3 JSON
+            temp_input_json_path = self._generate_temp_af3_json_for_msa()
+            if not temp_input_json_path: return None
+            # The name used inside this temp JSON is job_input.name_stem + "_msa_gen"
+            internal_json_name_stem = self.job_input.name_stem + "_msa_gen"
+            logger.info(f"Generated temporary AF3 JSON for MSA pipeline. Internal name: {internal_json_name_stem}")
+
+        if not temp_input_json_path or not internal_json_name_stem:
+            logger.error("Failed to determine input JSON or internal name for AF3 MSA pipeline.")
             return None
+            
         input_json_filename = temp_input_json_path.name
 
         # 2. Define output directory for this specific AF3 data pipeline run
-        af3_msa_output_dir = self.msa_tmp_dir / f"{self.job_input.name_stem}_af3_data_out"
-        af3_msa_output_dir.mkdir(parents=True, exist_ok=True)
+        # The host output base is self.msa_tmp_dir
+        # AF3 will create a subdir named 'internal_json_name_stem' inside the container's output dir.
+        # So, the *container's* output dir mapping should point to self.msa_tmp_dir.
+        # And the final data will be in self.msa_tmp_dir / internal_json_name_stem / ...
+        af3_data_pipeline_host_output_base = self.msa_tmp_dir
 
         # 3. Construct Singularity command
         container_input_json = f"/app/input/{input_json_filename}"
-        container_output_dir = "/app/output"
+        container_output_dir_in_af3 = "/app/output" # AF3 will write to /app/output/internal_json_name_stem
         container_db_dir = "/data/public_databases" # Match Runner's AF3 convention
         container_model_dir = "/data/models"      # Match Runner's AF3 convention
 
@@ -179,7 +218,7 @@ class MSAManager:
 
         # Bindings (absolute paths on host)
         cmd.extend(["-B", f"{temp_input_json_path.parent.resolve()}:/app/input:ro"])
-        cmd.extend(["-B", f"{af3_msa_output_dir.resolve()}:{container_output_dir}"]) 
+        cmd.extend(["-B", f"{af3_data_pipeline_host_output_base.resolve()}:{container_output_dir_in_af3}"])
         # Bind DBs - Use the path from the main config
         db_dir_host = self.config.get("alphafold3_database_dir")
         if db_dir_host and Path(db_dir_host).is_dir():
@@ -200,7 +239,7 @@ class MSAManager:
         # Command arguments for run_alphafold.py inside container
         run_script_args = [
             f"--json_path={container_input_json}",
-            f"--output_dir={container_output_dir}",
+            f"--output_dir={container_output_dir_in_af3}", # Tell AF3 to write to /app/output
             f"--model_dir={container_model_dir}",
             "--run_data_pipeline=True",
             "--run_inference=False", 
@@ -218,14 +257,12 @@ class MSAManager:
             logger.error(f"AlphaFold 3 MSA pipeline failed with exit code {exit_code}.")
             return None
         
-        # The stem used by AF3 for its output subdirectory and _data.json file is 
-        # the 'name' field from *inside* the input JSON provided to run_alphafold.py.
-        # This was set in _generate_temp_af3_json_for_msa as self.job_input.name_stem + "_msa_gen".
-        internal_json_name_stem = self.job_input.name_stem + "_msa_gen"
+        # The stem used by AF3 for its output subdirectory and _data.json file is internal_json_name_stem.
+        # This was derived either from the user's JSON or generated for the temp JSON.
 
-        # af3_msa_output_dir is the HOST path to what was /app/output in container
-        # AF3 creates a subdirectory inside this /app/output based on internal_json_name_stem
-        expected_output_subdirectory = af3_msa_output_dir / internal_json_name_stem
+        # af3_data_pipeline_host_output_base is the HOST path to what was container_output_dir_in_af3 in container
+        # AF3 creates a subdirectory inside this based on internal_json_name_stem
+        expected_output_subdirectory = af3_data_pipeline_host_output_base / internal_json_name_stem
         expected_output_filename = f"{internal_json_name_stem}_data.json"
         output_data_json_path = expected_output_subdirectory / expected_output_filename
         
