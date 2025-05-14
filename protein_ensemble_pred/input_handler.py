@@ -183,23 +183,19 @@ class InputHandler:
 
                 # MSA Content Check for protein, rna, dna
                 if seq_type_val in ["protein", "rna", "dna"]:
-                    if entity_data.get("unpairedMsaPath"): entity_has_msa = True
-                    if not entity_has_msa and entity_data.get("unpairedMsa") and len(str(entity_data["unpairedMsa"]).strip().splitlines()) > 1 : entity_has_msa = True
-                    if not entity_has_msa and entity_data.get("pairedMsaPath"): entity_has_msa = True
-                    # pairedMsa check: needs to be more than just a >query\nSEQUENCE placeholder
-                    paired_msa_content = entity_data.get("pairedMsa")
-                    if not entity_has_msa and paired_msa_content and isinstance(paired_msa_content, str):
-                        paired_msa_lines = paired_msa_content.strip().splitlines()
-                        if len(paired_msa_lines) > 1: # More than just one line (potential header)
-                             # Avoid ">query\n{sequence}" placeholder if unpairedMsaPath is used
-                            is_placeholder = False
-                            if len(paired_msa_lines) == 2 and paired_msa_lines[0].startswith(">") and entity_data.get("unpairedMsaPath"):
-                                # This specific pattern is often a placeholder when unpairedMsaPath is dominant.
-                                # A more robust check might compare paired_msa_lines[1] with entity_data.get("sequence")
-                                pass # Treat as placeholder if unpairedMsaPath is also present
-                            else:
-                                entity_has_msa = True
+                    if entity_data.get("unpairedMsaPath") and Path(file_path.parent / entity_data.get("unpairedMsaPath")).is_file(): # Check if path is valid
+                        entity_has_msa = True
+                    if not entity_has_msa and entity_data.get("pairedMsaPath") and Path(file_path.parent / entity_data.get("pairedMsaPath")).is_file(): # Check if path is valid
+                        entity_has_msa = True
+                    
+                    # Check for actual MSA content (even if just self-alignment)
+                    unpaired_msa_val = entity_data.get("unpairedMsa")
+                    if not entity_has_msa and isinstance(unpaired_msa_val, str) and unpaired_msa_val.strip(): # Non-empty string
+                        entity_has_msa = True
 
+                    paired_msa_val = entity_data.get("pairedMsa")
+                    if not entity_has_msa and isinstance(paired_msa_val, str) and paired_msa_val.strip(): # Non-empty string
+                        entity_has_msa = True
 
                 if entity_has_msa:
                     has_msa_content = True # Global flag for the job
