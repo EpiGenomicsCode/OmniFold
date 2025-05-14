@@ -37,12 +37,21 @@ class ConfigGenerator:
         
         config_paths = {}
         try:
-            # Generate AF3 config if needed (always generate for now, runner uses it)
-            af3_config_path = self._generate_af3_json_from_job_input(job_input, config_output_dir)
-            if af3_config_path:
-                config_paths["af3_config_path"] = str(af3_config_path)
+            # Determine AlphaFold3 config path
+            if job_input.af3_data_json and job_input.raw_input_type != "boltz_yaml": # If a full _data.json is already available (from AF3 MSA pipeline or AF3 JSON input)
+                # And not if the original input was Boltz, to prevent accidental use if af3_data_json was somehow set.
+                logger.info(f"Reusing existing AlphaFold3 data JSON as config: {job_input.af3_data_json}")
+                config_paths["af3_config_path"] = job_input.af3_data_json
+            elif not job_input.is_boltz_config: # Only generate if not a Boltz-specific input that shouldn't run AF3
+                 # Generate AF3 config using individual A3Ms if available, or for MSA-free run
+                logger.info("Generating new AlphaFold3 JSON config.")
+                af3_config_path = self._generate_af3_json_from_job_input(job_input, config_output_dir)
+                if af3_config_path:
+                    config_paths["af3_config_path"] = str(af3_config_path)
+                else:
+                    logger.warning("Failed to generate AlphaFold3 JSON config.")
             else:
-                 logger.warning("Failed to generate AlphaFold3 JSON config.") # Don't fail pipeline if only one fails?
+                logger.info("Skipping AlphaFold3 config generation (input is Boltz YAML or no AF3 data JSON available).")
 
             # Generate Boltz config if needed
             # Check if there are sequences suitable for Boltz first?
