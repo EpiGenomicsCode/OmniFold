@@ -95,7 +95,8 @@ class InputHandler:
             return JobInput(
                 name_stem=name_stem,
                 sequences=sequences_info,
-                raw_input_type="fasta"
+                raw_input_type="fasta",
+                output_dir="" # Add empty string as placeholder, Orchestrator will set the actual path
                 # input_msa_paths and constraints will be empty for FASTA
             )
 
