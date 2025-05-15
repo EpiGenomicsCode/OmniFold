@@ -275,9 +275,30 @@ class InputHandler:
                 if not isinstance(seg_data, dict):
                     logger.warning(f"Skipping non-dictionary segment in Boltz YAML: {seg_data}"); continue
 
-                seq_str = seg_data.get("sequence")
-                # Boltz YAML might use 'name' or 'id' for chain identifier. Let's try 'name', then 'id', then generate.
-                chain_id = seg_data.get("name", seg_data.get("id"))
+                # Get the entity type (protein, ligand, etc.)
+                entity_type = next(iter(seg_data.keys()))
+                entity_data = seg_data[entity_type]
+
+                if not isinstance(entity_data, dict):
+                    logger.warning(f"Invalid entity data in Boltz YAML: {entity_data}"); continue
+
+                # Get sequence/smiles based on entity type
+                if entity_type == "protein":
+                    seq_str = entity_data.get("sequence")
+                elif entity_type == "ligand":
+                    # Check for both smiles and ccd fields
+                    if "smiles" in entity_data:
+                        seq_str = entity_data.get("smiles")
+                    elif "ccd" in entity_data:
+                        seq_str = entity_data.get("ccd")
+                    else:
+                        logger.warning(f"Ligand '{chain_id}' in Boltz YAML is missing both 'smiles' and 'ccd'. Skipping.")
+                        continue
+                else:
+                    logger.warning(f"Unsupported entity type in Boltz YAML: {entity_type}"); continue
+
+                # Get chain ID
+                chain_id = entity_data.get("id")
                 if not chain_id:
                     try:
                         chain_id = next(chain_id_gen)
@@ -299,7 +320,7 @@ class InputHandler:
 
                 # Check for MSA paths
                 # Boltz YAML spec: `msa: "path/to/msa.a3m"` or `msa: ["path1", "path2"]`
-                msa_entry = seg_data.get("msa")
+                msa_entry = entity_data.get("msa")
                 if msa_entry: # If msa key exists and is not None/empty
                     has_msa_content = True # Found an MSA declaration
 
