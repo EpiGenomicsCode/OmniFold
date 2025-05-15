@@ -39,7 +39,7 @@ class ConfigGenerator:
                 config_paths["af3_config_path"] = job_input.original_af3_config_path
                 logger.info(f"Using user-provided AF3 JSON (with MSAs) directly for AF3 inference: {config_paths['af3_config_path']}")
             
-            elif job_input.af3_data_json: # MSAs were generated (from any input type), result is in af3_data_json
+            elif job_input.af3_data_json:
                 logger.info(f"AF3 MSAs are available from pipeline output: {job_input.af3_data_json}")
                 logger.info("Creating final AF3 inference JSON by merging MSA data with original/default seeds and parameters.")
                 inference_json_name = f"{job_input.name_stem}_af3_inference_final.json"
@@ -59,8 +59,7 @@ class ConfigGenerator:
                                               # This implies FASTA/other input + ColabFold MSAs, so we need to generate AF3 JSON from A3Ms
                 logger.info("Attempting to generate new AlphaFold3 JSON config for inference using A3M paths.")
                 af3_inference_filename = f"{job_input.name_stem}_af3_inference_from_a3m.json"
-                # _generate_af3_json_from_job_input uses job_input.model_seeds (which has CLI default if applicable)
-                # and job_input.protein_id_to_a3m_path
+
                 af3_config_path = self._generate_af3_json_from_job_input(job_input, config_output_dir, af3_inference_filename)
                 if af3_config_path:
                     config_paths["af3_config_path"] = str(af3_config_path)
@@ -73,8 +72,6 @@ class ConfigGenerator:
             # --- Boltz-1 Configuration ---
             if job_input.original_boltz_config_path:
                 # User provided Boltz YAML. Use it directly.
-                # Per user: "if the configuration of a particular model is given we shouldn't be messing with that input file"
-                # So, we don't adjust n_preds here based on AF3 seeds if original Boltz config is used.
                 config_paths["boltz_config_path"] = job_input.original_boltz_config_path
                 logger.info(f"Using user-provided Boltz YAML directly for Boltz inference: {config_paths['boltz_config_path']}")
             elif any(s.molecule_type != 'unknown' for s in job_input.sequences): # Check if there are any processable sequences for Boltz
@@ -389,8 +386,6 @@ class ConfigGenerator:
 
         if not segments_list:
             logger.warning(f"No suitable segments generated for Boltz YAML for job {job_input.name_stem}")
-            # Still might create a file if only general settings were important, but likely an issue.
-            # For now, let it proceed to write an empty segments list if that's the case.
 
         boltz_config["sequences"] = segments_list 
         
