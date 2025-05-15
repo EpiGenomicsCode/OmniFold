@@ -347,20 +347,13 @@ class ConfigGenerator:
                 logger.debug(f"Using input MSA path for Boltz chain {chain_id}: {msa_path_for_chain}")
 
             if seq_info.molecule_type == "protein":
-                protein_data = {
-                    "id": chain_id,
-                    "sequence": seq_info.sequence
+                entity = {
+                    "protein": {
+                        "id": chain_id,
+                        "sequence": seq_info.sequence,
+                        "msa": str(Path(job_input.output_dir) / "msa_generation" / f"msa_{chain_id}.a3m")
+                    }
                 }
-                if msa_path_for_chain:
-                    if is_a3m_singleton(msa_path_for_chain, seq_info.sequence):
-                        protein_data["msa"] = "empty"
-                        logger.info(f"A3M for protein {chain_id} is a singleton. Setting Boltz msa to 'empty'.")
-                    else:
-                        protein_data["msa"] = str(Path(msa_path_for_chain).resolve()) # Use absolute path
-                else:
-                    logger.info(f"No MSA path found for protein {chain_id}. Setting Boltz msa to 'empty'.")
-                    protein_data["msa"] = "empty" # Default to empty if no MSA path
-                entity["protein"] = protein_data
             elif seq_info.molecule_type == "rna":
                 # entity["rna"] = {"id": chain_id, "sequence": seq_info.sequence}
                 # Boltz YAML structure for RNA/DNA needs confirmation, assume similar to protein for now if supported
@@ -369,11 +362,19 @@ class ConfigGenerator:
                 # entity["dna"] = {"id": chain_id, "sequence": seq_info.sequence}
                 segments_list.append({"id": chain_id, "sequence": seq_info.sequence, "type": "dna"})
             elif seq_info.molecule_type == "ligand_smiles":
-                # entity["ligand"] = {"id": chain_id, "smiles": seq_info.sequence}
-                 segments_list.append({"id": chain_id, "smiles": seq_info.sequence, "type": "ligand"})
+                entity = {
+                    "ligand": {
+                        "id": chain_id,
+                        "smiles": seq_info.sequence
+                    }
+                }
             elif seq_info.molecule_type == "ligand_ccd":
-                # entity["ligand"] = {"id": chain_id, "ccd": seq_info.sequence}
-                segments_list.append({"id": chain_id, "ccd": seq_info.sequence, "type": "ligand"}) # Boltz might prefer SMILES
+                entity = {
+                    "ligand": {
+                        "id": chain_id,
+                        "ccd": seq_info.sequence
+                    }
+                }
             elif seq_info.molecule_type == "unknown":
                 logger.warning(f"Sequence '{seq_info.original_name}' (chain {chain_id}) has unknown type. Skipping for Boltz YAML.")
                 continue

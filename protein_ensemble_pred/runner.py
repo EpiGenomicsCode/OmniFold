@@ -138,6 +138,11 @@ class Runner:
                 "boltz", "predict",
                 input_config_file_host_path,
                 "--out_dir", model_specific_output_dir_host_path,
+                "--recycling_steps", "3",
+                "--sampling_steps", "200",
+                "--diffusion_samples", "1",
+                "--step_scale", "1.638",
+                "--output_format", "mmcif"
             ]
 
             # Add Boltz-1 specific parameters from config
@@ -158,11 +163,12 @@ class Runner:
             if self.config.get("boltz_output_format"):
                 model_command.extend(["--output_format", self.config["boltz_output_format"]])
 
-            # Handle MSA server for Boltz
-            if self.config.get("colabfold_msa_server_url"):
+            # Only use MSA server if explicitly configured
+            if self.config.get("use_msa_server", False):
                 model_command.append("--use_msa_server")
-                model_command.append("--msa_server_url")
-                model_command.append(self.config["colabfold_msa_server_url"])
+                if self.config.get("colabfold_msa_server_url"):
+                    model_command.append("--msa_server_url")
+                    model_command.append(self.config["colabfold_msa_server_url"])
 
         else:
             return -1, "", f"Unsupported model_name: {model_name}"
