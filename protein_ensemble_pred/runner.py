@@ -2,6 +2,7 @@ import os
 import subprocess
 import logging
 from typing import Any, Dict, Optional, Tuple
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -128,24 +129,32 @@ class Runner:
             if not sif_path or not os.path.exists(sif_path):
                 return -1, "", "Boltz-1 SIF path not configured or not found."
 
+            # Determine the job's root output directory on the host.
+            # input_config_file_host_path is like .../job_output_root/configs/boltz.yaml
+            # model_specific_output_dir_host_path is like .../job_output_root/boltz
+            # So, job_output_root_host_path is the parent of the parent of input_config_file_host_path
+            job_output_root_host_path = Path(input_config_file_host_path).parent.parent
+
+            container_job_output_root = "/data/job_output" # Defined path inside container for job's root
+            
+            # Path to config file inside container
+            container_config_path = str(Path(container_job_output_root) / Path(input_config_file_host_path).relative_to(job_output_root_host_path))
+            # Path to model output dir inside container
+            container_model_out_dir = str(Path(container_job_output_root) / Path(model_specific_output_dir_host_path).relative_to(job_output_root_host_path))
+
+
             # Set up binds for Boltz
             binds = {
-                input_config_file_host_path: input_config_file_host_path,  # Keep original path
-                model_specific_output_dir_host_path: model_specific_output_dir_host_path,  # Keep original path
+                str(job_output_root_host_path): container_job_output_root,
             }
 
             model_command = [
                 "boltz", "predict",
-                input_config_file_host_path,
-                "--out_dir", model_specific_output_dir_host_path,
-                "--recycling_steps", "3",
-                "--sampling_steps", "200",
-                "--diffusion_samples", "1",
-                "--step_scale", "1.638",
-                "--output_format", "mmcif"
+                container_config_path, # Use container path for config
+                "--out_dir", container_model_out_dir, # Use container path for output
             ]
-
-            # Add Boltz-1 specific parameters from config
+            
+            # Add Boltz-1 specific parameters from config (these are just flags/values, not paths)
             if self.config.get("boltz_recycling_steps") is not None:
                 model_command.extend(["--recycling_steps", str(self.config["boltz_recycling_steps"])])
             if self.config.get("boltz_sampling_steps") is not None:
