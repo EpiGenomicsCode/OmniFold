@@ -382,7 +382,7 @@ class ConfigGenerator:
                 # We need to check the *source* of MSA info to decide if it should be 'empty'
                 if msa_path_for_chain: # if a host path was determined
                     if Path(msa_path_for_chain).name == "empty" or \
-                       (Path(msa_path_for_chain).exists() and is_a3m_singleton(str(msa_path_for_chain))):
+                       (Path(msa_path_for_chain).exists() and is_a3m_singleton(str(msa_path_for_chain), seq_info.sequence)):
                         logger.info(f"A3M for protein {chain_id} is a singleton or marked empty. Setting Boltz msa to 'empty'.")
                         entity["protein"]["msa"] = "empty"
                 elif not job_input.has_msa: # No pre-existing MSA and none generated from AF3 data pipeline (e.g. FASTA input initial state)
