@@ -61,7 +61,7 @@ The following paths must be provided as command-line arguments when running the 
     pip install -e .
     ```
 3.  **Ensure Singularity Images and Data are Accessible:**
-    *   Download or build the AlphaFold3 and Boltz-1 Singularity images. **We recommend using the pre-built images available from [https://github.com/EpiGenomicsCode/AF3-Container](https://github.com/EpiGenomicsCode/AF3-Container).** Place the `.sif` files in accessible locations on your HPC system.
+    *   Download or build the AlphaFold3 and Boltz-1 Singularity images. **We recommend using the pre-built images available from [Protein Structure Containers](https://github.com/EpiGenomicsCode/ProteinStruct-Containers).** Place the `.sif` files in accessible locations on your HPC system.
     *   **Download the AlphaFold3 Model Weights:** Access to the official AlphaFold3 model parameters requires registration for non-commercial use via the [AlphaFold 3 Model Parameters Request Form](https://docs.google.com/forms/d/e/1FAIpQLSfWZAgo1aYk0O4MuAXZj8xRQ8DafeFJnldNOnh_13qAx2ceZw/viewform). Ensure you meet the terms and download the weights to an accessible directory path.
     *   **Download AlphaFold3 Databases (if needed):** If you plan to use the `alphafold3` MSA generation method, you must download the required databases. Use the official [fetch_databases.sh script](https://github.com/google-deepmind/alphafold3/blob/main/fetch_databases.sh) provided by Google DeepMind. Ensure the databases are stored in an accessible directory path.
 
