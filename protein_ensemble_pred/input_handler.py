@@ -285,14 +285,17 @@ class InputHandler:
                 # Get sequence/smiles based on entity type
                 if entity_type == "protein":
                     seq_str = entity_data.get("sequence")
+                    molecule_type_val: SequenceType = "protein" # Default for protein
                 elif entity_type == "ligand":
                     # Check for both smiles and ccd fields
                     if "smiles" in entity_data:
                         seq_str = entity_data.get("smiles")
+                        molecule_type_val = "ligand_smiles"
                     elif "ccd" in entity_data:
                         seq_str = entity_data.get("ccd")
+                        molecule_type_val = "ligand_ccd"
                     else:
-                        logger.warning(f"Ligand '{chain_id}' in Boltz YAML is missing both 'smiles' and 'ccd'. Skipping.")
+                        logger.warning(f"Ligand entity in Boltz YAML is missing both 'smiles' and 'ccd': {entity_data}. Skipping.")
                         continue
                 else:
                     logger.warning(f"Unsupported entity type in Boltz YAML: {entity_type}"); continue
@@ -310,12 +313,38 @@ class InputHandler:
                 original_name = chain_id # Use chain_id as original_name for Boltz
 
                 if not seq_str:
-                    logger.warning(f"Segment '{chain_id}' in Boltz YAML is missing 'sequence'. Skipping.")
+                    logger.warning(f"Segment '{chain_id}' in Boltz YAML is missing 'sequence', 'smiles', or 'ccd'. Skipping.")
                     continue
                 
                 # Guess molecule type (Boltz typically protein)
                 # Using the same as_entity logic for consistency
-                seq_info_obj = as_entity(str(seq_str), str(chain_id), original_name)
+                # seq_info_obj = as_entity(str(seq_str), str(chain_id), original_name)
+
+                # Explicitly set molecule_type if already determined (especially for ligands)
+                if entity_type == "ligand":
+                    # We've already determined molecule_type_val for ligands
+                    seq_info_obj = SequenceInfo(
+                        original_name=original_name,
+                        sequence=str(seq_str),
+                        molecule_type=molecule_type_val, # Use pre-determined type
+                        chain_id=str(chain_id)
+                    )
+                elif entity_type == "protein": # For protein, can use as_entity or set directly
+                     # seq_info_obj = as_entity(str(seq_str), str(chain_id), original_name)
+                     # Forcing protein type as per Boltz context before this change
+                     seq_info_obj = SequenceInfo(
+                        original_name=original_name,
+                        sequence=str(seq_str),
+                        molecule_type="protein", 
+                        chain_id=str(chain_id)
+                    )
+                else: 
+                    # Fallback to as_entity for other types if any were supported, 
+                    # but current logic only supports protein and ligand.
+                    # This branch should ideally not be hit given current supported types.
+                    logger.warning(f"Unexpected entity type '{entity_type}' fell through to as_entity. Check logic.")
+                    seq_info_obj = as_entity(str(seq_str), str(chain_id), original_name)
+
                 sequences_info.append(seq_info_obj)
 
                 # Check for MSA paths

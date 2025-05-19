@@ -8,7 +8,7 @@ rna_alphabet: set[str] = set("ACGU") | set("acgu") # Added lowercase for robustn
 dna_alphabet: set[str] = set("ACGT") | set("acgt") # Added lowercase for robustness
 # Simplified CCD alphabet check for as_entity, full CCD dict will be in af3_models.py
 ccd_alphabet_check: set[str] = set([chr(x) for x in range(ord("A"), ord("Z") + 1)]) | set(f"{a}" for a in range(10))
-smiles_alphabet_check: set[str] = set(r"Hh+Nn27#Oo.[]58lLfF4PpSs(=C@c3-@\16/") # Expanded common SMILES chars
+smiles_alphabet_check: set[str] = set(r"Hh+Nn27#Oo.[]58lLfF4PpSs(=C@c3-@\\16/)09*:%BbRrIiMmZzGgQq") # Expanded common SMILES chars, added ) and more elements/digits
 
 SequenceType = Literal["protein", "rna", "dna", "ligand_smiles", "ligand_ccd", "unknown"]
 
