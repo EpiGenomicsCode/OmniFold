@@ -47,7 +47,6 @@ class Runner:
         if not use_run:
             cmd.append(sif_path)
         else:
-            # For 'run', the SIF path comes after all binds
             cmd.append(sif_path)
             
         return cmd
@@ -83,18 +82,15 @@ class Runner:
             if not sif_path or not os.path.exists(sif_path):
                 return -1, "", "AlphaFold3 SIF path not configured or not found."
 
-            # Set up binds for AF3
             binds = {
                 input_config_file_host_path: "/data/af_input/fold_input.json",
                 model_specific_output_dir_host_path: "/data/af_output",
                 self.config["alphafold3_model_weights_dir"]: "/data/models",
             }
             
-            # Add database directory if provided
             if self.config.get("alphafold3_database_dir"):
                 binds[self.config["alphafold3_database_dir"]] = "/data/public_databases"
 
-            # Construct the run_alphafold.py command
             model_command = [
                 "--json_path=/data/af_input/fold_input.json",
                 "--model_dir=/data/models",
@@ -103,11 +99,9 @@ class Runner:
                 "--run_inference=True",
             ]
 
-            # Add database directory if provided
             if self.config.get("alphafold3_database_dir"):
                 model_command.append("--db_dir=/data/public_databases")
 
-            # Add AlphaFold3 specific parameters from config if they are set
             if self.config.get("af3_num_recycles") is not None:
                 model_command.extend(["--num_recycles", str(self.config["af3_num_recycles"])])
             if self.config.get("af3_num_diffusion_samples") is not None:
@@ -129,32 +123,23 @@ class Runner:
             if not sif_path or not os.path.exists(sif_path):
                 return -1, "", "Boltz-1 SIF path not configured or not found."
 
-            # Determine the job's root output directory on the host.
-            # input_config_file_host_path is like .../job_output_root/configs/boltz.yaml
-            # model_specific_output_dir_host_path is like .../job_output_root/boltz
-            # So, job_output_root_host_path is the parent of the parent of input_config_file_host_path
             job_output_root_host_path = Path(input_config_file_host_path).parent.parent
 
-            container_job_output_root = "/data/job_output" # Defined path inside container for job's root
+            container_job_output_root = "/data/job_output"
             
-            # Path to config file inside container
             container_config_path = str(Path(container_job_output_root) / Path(input_config_file_host_path).relative_to(job_output_root_host_path))
-            # Path to model output dir inside container
             container_model_out_dir = str(Path(container_job_output_root) / Path(model_specific_output_dir_host_path).relative_to(job_output_root_host_path))
 
-
-            # Set up binds for Boltz
             binds = {
                 str(job_output_root_host_path): container_job_output_root,
             }
 
             model_command = [
                 "boltz", "predict",
-                container_config_path, # Use container path for config
-                "--out_dir", container_model_out_dir, # Use container path for output
+                container_config_path,
+                "--out_dir", container_model_out_dir,
             ]
             
-            # Add Boltz-1 specific parameters from config (these are just flags/values, not paths)
             if self.config.get("boltz_recycling_steps") is not None:
                 model_command.extend(["--recycling_steps", str(self.config["boltz_recycling_steps"])])
             if self.config.get("boltz_sampling_steps") is not None:
@@ -172,7 +157,6 @@ class Runner:
             if self.config.get("boltz_output_format"):
                 model_command.extend(["--output_format", self.config["boltz_output_format"]])
 
-            # Only use MSA server if explicitly configured
             if self.config.get("use_msa_server", False):
                 model_command.append("--use_msa_server")
                 if self.config.get("colabfold_msa_server_url"):
@@ -182,8 +166,6 @@ class Runner:
         else:
             return -1, "", f"Unsupported model_name: {model_name}"
 
-        # Construct the full singularity command
-        # Use 'run' for AF3, 'exec' for Boltz
         use_run = (model_name == "alphafold3")
         singularity_base_cmd = self._construct_base_singularity_cmd(sif_path, binds, gpu_id, use_run)
         full_cmd = singularity_base_cmd + model_command

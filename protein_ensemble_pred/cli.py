@@ -5,41 +5,45 @@ import sys
 
 from .orchestrator import Orchestrator
 
+
 def setup_logging(log_level_str: str):
-    """Configures logging for the application."""
+    """
+    Configures logging for the application.
+    
+    Basic configuration ensuring all modules use this by configuring the root logger.
+    Removes any existing handlers to avoid duplicate logs if re-running in same session.
+    """
     numeric_level = getattr(logging, log_level_str.upper(), None)
     if not isinstance(numeric_level, int):
         raise ValueError(f'Invalid log level: {log_level_str}')
     
-    # Basic configuration ensuring all modules use this
-    # Get the root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(numeric_level)
 
-    # Remove any existing handlers to avoid duplicate logs if re-running in same session
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    # Add a new handler
     handler = logging.StreamHandler(sys.stdout)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
     root_logger.addHandler(handler)
     
-    # Get a logger for this module
     logger = logging.getLogger(__name__)
     logger.info(f"Logging configured at level: {log_level_str.upper()}")
     return logger
 
 
 def main():
+    """
+    HPC Protein Ensemble Prediction CLI.
+    Runs protein structure prediction using an ensemble of models (AlphaFold3 and Boltz-1).
+    """
     parser = argparse.ArgumentParser(
         description="HPC Protein Ensemble Prediction CLI. \n"
                     "Runs protein structure prediction using an ensemble of models (AlphaFold3 and Boltz-1).",
-        formatter_class=argparse.RawTextHelpFormatter  # Allows for better formatting of help text
+        formatter_class=argparse.RawTextHelpFormatter
     )
 
-    # --- Input and Output Arguments ---
     parser.add_argument(
         "--input_file",
         required=True,
@@ -53,7 +57,6 @@ def main():
         help="Path to the directory where results will be saved."
     )
 
-    # --- Singularity Container Paths ---
     container_group = parser.add_argument_group('Singularity Container Paths')
     container_group.add_argument(
         "--alphafold3_sif_path",
@@ -68,11 +71,10 @@ def main():
         help="Path to the Boltz-1 Singularity image (.sif file)."
     )
 
-    # --- Model Specific Paths ---
     model_paths_group = parser.add_argument_group('Model Specific Paths')
     model_paths_group.add_argument(
         "--alphafold3_model_weights_dir",
-        required=True, # As per user: "they have to provide the model weights otherwise we cant run af3"
+        required=True,
         type=str,
         help="Path to the directory containing AlphaFold3 model parameters/weights."
     )
@@ -110,7 +112,6 @@ def main():
              "this URL might be passed to the Boltz container. Not used by MSAManager's local colabfold/MMseqs2 run."
     )
 
-    # --- Execution Control Arguments ---
     exec_group = parser.add_argument_group('Execution Control')
     exec_group.add_argument(
         "--sequential",
@@ -130,7 +131,6 @@ def main():
         help="Set the logging level (default: INFO)."
     )
 
-    # --- AlphaFold3 Specific Parameters ---
     af3_specific_group = parser.add_argument_group('AlphaFold3 Specific Parameters')
     af3_specific_group.add_argument(
         "--af3_num_recycles",
@@ -175,7 +175,6 @@ def main():
         help="(Optional) Token sizes for caching compilations in AlphaFold3. If not provided, AF3 defaults are used."
     )
 
-    # --- Boltz-1 Specific Parameters ---
     boltz_specific_group = parser.add_argument_group('Boltz-1 Specific Parameters')
     boltz_specific_group.add_argument(
         "--boltz_recycling_steps",
@@ -226,16 +225,13 @@ def main():
     args = parser.parse_args()
     logger = setup_logging(args.log_level)
 
-    # Create the output directory if it doesn't exist
     try:
         os.makedirs(args.output_dir, exist_ok=True)
         logger.info(f"Ensured output directory exists: {args.output_dir}")
     except OSError as e:
         logger.error(f"Failed to create output directory {args.output_dir}: {e}")
-        sys.exit(1) # Exit if we can\'t create the output directory
+        sys.exit(1)
 
-    # --- Prepare Configuration for Orchestrator ---
-    # This config will be passed to all modules.
     config = {
         "input_file": os.path.abspath(args.input_file),
         "output_dir": os.path.abspath(args.output_dir),
@@ -264,7 +260,6 @@ def main():
         "alphafold_database_root_path": os.path.abspath(args.alphafold3_database_dir) if args.alphafold3_database_dir else None,
         "alphafold_model_params_path": os.path.abspath(args.alphafold3_model_weights_dir),
 
-        # AlphaFold3 specific execution parameters
         "af3_num_recycles": args.af3_num_recycles,
         "af3_num_diffusion_samples": args.af3_num_diffusion_samples,
         "af3_num_seeds": args.af3_num_seeds,
@@ -272,7 +267,6 @@ def main():
         "af3_max_template_date": args.af3_max_template_date,
         "af3_conformer_max_iterations": args.af3_conformer_max_iterations,
 
-        # Boltz-1 specific execution parameters
         "boltz_recycling_steps": args.boltz_recycling_steps,
         "boltz_sampling_steps": args.boltz_sampling_steps,
         "boltz_diffusion_samples": args.boltz_diffusion_samples,
@@ -282,26 +276,21 @@ def main():
         "boltz_write_full_pae": args.boltz_write_full_pae,
         "boltz_write_full_pde": args.boltz_write_full_pde,
         "boltz_output_format": args.boltz_output_format,
-
-        # GPU detection/assignment  needs to go here.
     }
     
-    # Conditionally add af3_buckets to config
     if args.af3_buckets is not None:
         config["af3_buckets"] = args.af3_buckets
     
-    # Add a check for required paths within the config that Orchestrator/submodules need
     required_paths = [
         "alphafold3_sif_path", 
         "boltz1_sif_path", 
-        "alphafold3_model_weights_dir", 
-        # alphafold3_database_dir is optional for prediction, required only for AF3 MSA gen
+        "alphafold3_model_weights_dir",
     ]
     missing_paths = [p for p in required_paths if not config.get(p) or not os.path.exists(config[p])]
     if missing_paths:
         for path_key in missing_paths:
             if not config.get(path_key):
-                 logger.error(f"Missing required configuration parameter: --{path_key.replace('_sif_path','-sif-path').replace('_dir','-dir')}") # Attempt to match arg name
+                 logger.error(f"Missing required configuration parameter: --{path_key.replace('_sif_path','-sif-path').replace('_dir','-dir')}")
             else:
                  logger.error(f"Required path does not exist: {config[path_key]} (from --{path_key.replace('_sif_path','-sif-path').replace('_dir','-dir')})")
         sys.exit(1)
@@ -313,7 +302,7 @@ def main():
         orchestrator.run_pipeline(input_file=config["input_file"])
         logger.info("Pipeline execution finished.")
     except Exception as e:
-        logger.error(f"Pipeline execution failed: {e}", exc_info=True) # Log traceback
+        logger.error(f"Pipeline execution failed: {e}", exc_info=True)
         sys.exit(1)
 
 

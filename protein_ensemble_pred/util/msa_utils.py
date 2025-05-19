@@ -33,14 +33,14 @@ def extract_all_protein_a3ms_from_af3_json(json_path: str, output_dir: str) -> O
 
         if not isinstance(data, dict) or "sequences" not in data:
             logger.error(f"Invalid AF3 JSON format in {json_path}: Missing 'sequences' key.")
-            return None # Critical error, cannot proceed
+            return None 
 
         os.makedirs(output_dir, exist_ok=True)
 
         sequences = data.get("sequences", [])
         if not sequences:
              logger.warning(f"No sequences found in {json_path}.")
-             return {} # No sequences, but not an error
+             return {} 
 
         protein_found = False
         for entity_index, entity in enumerate(sequences):
@@ -61,7 +61,7 @@ def extract_all_protein_a3ms_from_af3_json(json_path: str, output_dir: str) -> O
                     
                 if msa_content is None:
                     logger.info(f"Protein ID(s) {protein_ids_raw} has no 'unpairedMsa' field. Skipping extraction for this entity.")
-                    continue # No MSA provided for this protein
+                    continue 
 
                 if not isinstance(msa_content, str):
                     logger.warning(f"Protein ID(s) {protein_ids_raw} has 'unpairedMsa' but it's not a string. Skipping extraction for this entity.")
@@ -69,7 +69,6 @@ def extract_all_protein_a3ms_from_af3_json(json_path: str, output_dir: str) -> O
                     
                 if not msa_content.strip():
                      logger.warning(f"Protein ID(s) {protein_ids_raw} has an empty or whitespace-only 'unpairedMsa'. Writing empty file(s)." )
-                     # Proceed to write empty file(s)
 
                 protein_ids: List[str]
                 if isinstance(protein_ids_raw, str):
@@ -86,7 +85,6 @@ def extract_all_protein_a3ms_from_af3_json(json_path: str, output_dir: str) -> O
                     logger.warning(f"No valid string IDs found for protein entity {entity_index}. Skipping.")
                     continue
 
-                # Write the same MSA content for all IDs associated with this protein entity
                 for protein_id in protein_ids:
                     output_a3m_filename = f"msa_{protein_id}.a3m"
                     output_a3m_path = os.path.abspath(os.path.join(output_dir, output_a3m_filename))
@@ -100,14 +98,12 @@ def extract_all_protein_a3ms_from_af3_json(json_path: str, output_dir: str) -> O
                         extracted_paths[protein_id] = output_a3m_path
                     except IOError as e:
                         logger.error(f"Error writing extracted A3M file for ID '{protein_id}' to {output_a3m_path}: {e}")
-                        # Consider if this should be a critical error
-                        has_critical_error = True # Let's treat I/O errors as critical for now
-                        break # Stop processing this entity if write fails
-                if has_critical_error: break # Stop processing entities if write fails
+                        has_critical_error = True 
+                        break 
+                if has_critical_error: break 
                         
         if not protein_found:
              logger.warning(f"No protein entities found in the 'sequences' list in {json_path}.")
-             # Return empty dict, as no protein MSAs were expected/found
 
         if has_critical_error:
              logger.error("Critical error occurred during A3M extraction. Returning None.")
@@ -142,9 +138,9 @@ def is_a3m_singleton(a3m_file_path: str, query_sequence: str) -> bool:
     """
     try:
         with open(a3m_file_path, 'r') as f:
-            lines = [line.strip() for line in f if line.strip()] # Read non-empty, stripped lines
+            lines = [line.strip() for line in f if line.strip()] 
         
-        if not lines: # Empty file
+        if not lines: 
             return False
 
         num_sequences = 0
@@ -155,27 +151,23 @@ def is_a3m_singleton(a3m_file_path: str, query_sequence: str) -> bool:
             if line.startswith('>'):
                 num_sequences += 1
                 if num_sequences > 1:
-                    return False # More than one sequence entry
+                    return False 
                 in_first_sequence = True
             elif in_first_sequence:
                 first_sequence_lines.append(line)
-            # If line doesn't start with '>' and we are not in_first_sequence, it's malformed or unexpected content before first header.
-            # However, typical A3M starts with a header.
 
         if num_sequences != 1:
-            return False # No sequence or more than one
+            return False 
 
-        # Reconstruct the first sequence from the file, removing gaps
         first_sequence_from_file = "".join(first_sequence_lines).replace("-", "").replace(".", "")
         
-        # Compare with the provided query sequence (also ungapped)
         clean_query_sequence = query_sequence.replace("-", "").replace(".", "")
         
         return first_sequence_from_file.upper() == clean_query_sequence.upper()
 
     except FileNotFoundError:
         logger.warning(f"A3M file not found for singleton check: {a3m_file_path}")
-        return False # Or raise? For now, treat as not a valid multi-sequence MSA
+        return False 
     except Exception as e:
         logger.error(f"Error checking A3M file {a3m_file_path} for singleton status: {e}")
-        return False # Treat as not a valid multi-sequence MSA in case of error 
+        return False 

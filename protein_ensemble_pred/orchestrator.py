@@ -24,6 +24,8 @@ class Orchestrator:
     def __init__(self, config: Dict[str, Any], output_dir: str):
         """
         Initialize the Orchestrator.
+        
+        Configures paths, initializes components, and sets up output directories.
 
         Args:
             config: Global configuration dictionary containing paths and settings
@@ -38,18 +40,19 @@ class Orchestrator:
         self.config_generator = ConfigGenerator()
         self.runner = Runner(self.config)
 
-        # Create output directory structure
         os.makedirs(output_dir, exist_ok=True)
         self.af3_output_dir = os.path.join(output_dir, "alphafold3")
         self.boltz_output_dir = os.path.join(output_dir, "boltz")
         os.makedirs(self.af3_output_dir, exist_ok=True)
         os.makedirs(self.boltz_output_dir, exist_ok=True)
 
-        # Setup logging
         self._setup_logging()
 
     def _setup_logging(self):
-        """Configure logging to write to both file and console."""
+        """
+        Configure logging to write to both file and console.
+        Sets up file handler with formatting and adds it to root logger if not already present.
+        """
         log_file = os.path.join(self.output_dir, "ensemble_prediction.log")
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(logging.Formatter(
@@ -63,6 +66,7 @@ class Orchestrator:
     def _run_model(self, model_name: str, config_path: str, output_dir: str, gpu_id: int) -> Tuple[int, str, str]:
         """
         Run a single model prediction.
+        Sets GPU visibility and executes model prediction.
         
         Args:
             model_name: Name of the model to run
@@ -85,6 +89,8 @@ class Orchestrator:
     def run_pipeline(self, input_file: str) -> bool:
         """
         Run the complete prediction pipeline.
+        Handles input parsing, MSA generation, config creation, and model execution.
+        Manages GPU assignments and parallel/sequential execution.
         
         Args:
             input_file: Path to the input file (FASTA, AF3 JSON, or Boltz YAML)
@@ -117,15 +123,13 @@ class Orchestrator:
                     first_protein_id = job_input.sequences[0].chain_id if job_input.sequences else "unknown_protein_1"
                     job_input.protein_id_to_a3m_path = {first_protein_id: msa_result["a3m_path"]}
 
-            # Extract A3Ms for Boltz if an AF3 JSON is available (either from input or MSA step)
-            # and we don't yet have the per-protein A3M path dictionary.
             if job_input.af3_data_json and not job_input.protein_id_to_a3m_path:
                 logger.info("AF3 JSON found, extracting A3Ms for Boltz for each protein...")
                 protein_id_to_a3m_path_dict = extract_all_protein_a3ms_from_af3_json(
                     job_input.af3_data_json, 
                     self.msa_output_dir 
                 )
-                if protein_id_to_a3m_path_dict is not None: # None indicates critical error
+                if protein_id_to_a3m_path_dict is not None:
                     job_input.protein_id_to_a3m_path = protein_id_to_a3m_path_dict
                     logger.info(f"A3Ms for Boltz extracted: {len(protein_id_to_a3m_path_dict)} files.")
                     if not protein_id_to_a3m_path_dict:
@@ -134,25 +138,15 @@ class Orchestrator:
                     logger.error("Critical error extracting A3Ms from AF3 JSON for Boltz. Cannot proceed.")
                     return False
 
-            # For now, we assume ConfigGenerator will handle missing MSAs for specific proteins if Boltz allows it.
             if not job_input.protein_id_to_a3m_path and \
                not job_input.is_boltz_config and \
                not job_input.is_af3_msa_config_only:
                 logger.warning("No per-protein A3M paths found or generated. Boltz prediction might fail or run MSA-free if not configured otherwise.")
-                # Not returning False here, as Boltz might be run MSA-free or AF3 only is intended.
 
-            # Ensure job_input.model_seeds reflects CLI default if no seeds came from input file
             if job_input.model_seeds is None and self.config.get("default_seed") is not None:
                 default_seed_val = self.config.get("default_seed")
-                # AF3 expects a list of seeds, even if it's just one.
-                # If af3_num_seeds is specified, that takes precedence for *how many* seeds, 
-                # but the base seed can still be default_seed.
-                # For now, let's assume default_seed implies a single seed run if no other seed info.
-                # ConfigGenerator's _generate_af3_json will handle AF3 specific num_seeds from CLI if present.
                 job_input.model_seeds = [int(default_seed_val)]
                 logger.info(f"Propagating CLI default_seed ({default_seed_val}) to job_input.model_seeds for ConfigGenerator.")
-                # Also update num_model_seeds_from_input if it was None, to reflect this one seed. 
-                # This helps Boltz n_preds logic if AF3 seeds weren't from an AF3 JSON.
                 if job_input.num_model_seeds_from_input is None:
                     job_input.num_model_seeds_from_input = 1 
 
@@ -162,7 +156,6 @@ class Orchestrator:
                 logger.error("Failed to generate model configurations.")
                 return False
             
-            # Determine number of models to run and assign GPUs
             num_models_to_run = 0
             if "af3_config_path" in configs: num_models_to_run +=1
             if "boltz_config_path" in configs: num_models_to_run +=1
@@ -173,14 +166,12 @@ class Orchestrator:
 
             gpu_assignments = assign_gpus_to_models(num_models_to_run, force_sequential=self.config.get("run_sequentially", False))
             
-            # Determine max_workers for ThreadPoolExecutor
-            # If sequential is forced or only one unique GPU is assigned, run one at a time.
             unique_gpu_ids = set(filter(None, gpu_assignments.values()))
             if self.config.get("run_sequentially", False) or len(unique_gpu_ids) <= 1 and num_models_to_run > 1:
                 max_workers = 1
                 logger.info(f"Executing models sequentially with max_workers=1.")
             else:
-                max_workers = len(unique_gpu_ids) if unique_gpu_ids else 1 # len(gpu_assignments) could be more than actual GPUs used
+                max_workers = len(unique_gpu_ids) if unique_gpu_ids else 1
                 logger.info(f"Executing models potentially in parallel with max_workers={max_workers} (based on unique GPUs).")
 
             results = {}
@@ -264,7 +255,8 @@ class Orchestrator:
 
     def _write_summary(self, results: Dict[str, Tuple[int, str, str]]):
         """
-        Write a summary of the prediction results.
+        Write a summary of the prediction results to a file.
+        Includes execution status, error details if any, and output directory paths.
         
         Args:
             results: Dictionary mapping model names to their execution results

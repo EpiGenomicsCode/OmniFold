@@ -216,7 +216,7 @@ class Template(BaseModel):
 
 class ProteinModification(BaseModel):
     ptmType: str
-    ptmPosition: int # 1-based
+    ptmPosition: int
 
 class ProteinChain(BaseModel):
     id: MolId | List[MolId]
@@ -225,7 +225,6 @@ class ProteinChain(BaseModel):
     unpairedMsaPath: Optional[str] = Field(None, alias="unpairedMsaPath") # Path to A3M
     pairedMsaPath: Optional[str] = Field(None, alias="pairedMsaPath") # Path to A3M for complexes
     templates: Optional[List[Template]] = None
-    # AlphaFold team mentioned that actual MSA content can also be embedded.
     unpairedMsa: Optional[str] = Field(None, alias="unpairedMsa") # Raw A3M string can also be here
     pairedMsa: Optional[str] = Field(None, alias="pairedMsa")   # Raw A3M string
 
@@ -251,14 +250,14 @@ class Protein(BaseModel):
 
 class NtModification(BaseModel):
     modificationType: str
-    basePosition: int # 1-based
+    basePosition: int 
 
 class RNAChain(BaseModel):
     id: MolId | List[MolId]
     sequence: RNASeq
     modifications: Optional[List[NtModification]] = None
     unpairedMsaPath: Optional[str] = Field(None, alias="unpairedMsaPath")
-    unpairedMsa: Optional[str] = Field(None, alias="unpairedMsa") # Raw A3M string for RNA
+    unpairedMsa: Optional[str] = Field(None, alias="unpairedMsa") 
 
     @model_validator(mode="after")
     def check_modifications(self) -> Self:
@@ -319,17 +318,14 @@ class LigandMolecule(BaseModel):
         return self
     
     @property
-    def id_(self) -> MolId | List[MolId]: # Helper for validator message
+    def id_(self) -> MolId | List[MolId]: 
         return self.id
 
 
 class Ligand(BaseModel):
     ligand: LigandMolecule
 
-# Using list of lists for atom pairs as per helpful/fasta2json.py and common representations
-# [[chain_id, residue_index, atom_name], [chain_id, residue_index, atom_name]]
-# Residue index is 1-based.
-AtomSpec = Tuple[str, int, str] # chain_id, residue_index (1-based), atom_name
+AtomSpec = Tuple[str, int, str] 
 BondedAtomPair = Tuple[AtomSpec, AtomSpec]
 
 
@@ -337,13 +333,7 @@ class Af3Input(BaseModel):
     name: str
     modelSeeds: List[int]
     sequences: List[Protein | RNA | DNA | Ligand]
-    bondedAtomPairs: Optional[List[BondedAtomPair]] = None # From helpful/fasta2json.py
-    # unpairedMsaPath: Optional[str] = None # Top-level MSA for the whole query if not per-chain
-    # pairedMsaPath: Optional[str] = None
-    # mmcifTemplatePaths: Optional[List[str]] = None # References to mmCIF files for templates
-    # userCCD: Optional[str] = None # Content of a custom CCD cif file
-    
-    # Fixed fields from DeepMind examples / helpful/fasta2json.py
+    bondedAtomPairs: Optional[List[BondedAtomPair]] = None
     dialect: Literal["alphafold3"] = "alphafold3"
     version: Literal[1] = 1
 
@@ -352,11 +342,10 @@ class Af3Input(BaseModel):
     def check_unique_ids(self) -> Self:
         ids = Counter()
         for seq_item in self.sequences:
-            # Get the inner chain object (ProteinChain, RNAChain, etc.)
             chain_obj = getattr(seq_item, seq_item.model_fields_set.pop())
             if isinstance(chain_obj.id, str):
                 ids.update([chain_obj.id])
-            else: # it's a list of IDs for homomers
+            else: 
                 ids.update(chain_obj.id)
         
         non_unique = ", ".join(f"{k}:{v}" for k, v in ids.items() if v > 1)
@@ -365,4 +354,4 @@ class Af3Input(BaseModel):
         return self
 
     class Config:
-        populate_by_name = True # Allows using 'unpairedMsaPath' instead of 'unpaired_msa_path' if alias is set 
+        populate_by_name = True 
