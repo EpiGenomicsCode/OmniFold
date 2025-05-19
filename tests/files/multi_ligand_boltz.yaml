@@ -8,4 +8,4 @@ sequences:
       smiles: "CC(=O)OC1=CC=CC=C1C(=O)O"
   - ligand:
       id: Y
-      smiles: "CC(=O)NCCC1=CNc2ccc(cc2)N1"
+      smiles: "CC(=O)NCCC1=cnc2ccc(cc2)n1"
