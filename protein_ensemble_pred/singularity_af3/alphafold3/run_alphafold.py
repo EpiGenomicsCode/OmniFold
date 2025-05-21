@@ -19,6 +19,9 @@ if received directly from Google. Use is subject to terms of use available at
 https://github.com/google-deepmind/alphafold3/blob/main/WEIGHTS_TERMS_OF_USE.md
 """
 
+"""This file has been modified from the original AlphaFold3 source code. The primary change ensures that the DataPipeline component writes its output (including the _data.json file and associated MSAs) to a specific target directory. This modification allows external calling scripts to precisely control the location where the MSA data and the main data JSON file are saved."""
+
+
 from collections.abc import Callable, Sequence
 import csv
 import dataclasses
