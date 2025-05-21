@@ -335,7 +335,7 @@ class Af3Input(BaseModel):
     sequences: List[Protein | RNA | DNA | Ligand]
     bondedAtomPairs: Optional[List[BondedAtomPair]] = None
     dialect: Literal["alphafold3"] = "alphafold3"
-    version: Literal[1] = 1
+    version: Literal[1, 2, 3]
 
 
     @model_validator(mode="after")

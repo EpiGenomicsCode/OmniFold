@@ -250,7 +250,6 @@ class MSAManager:
             logger.info(f"AlphaFold 3 MSA data JSON found at: {output_data_json_path.resolve()}")
             results = {"af3_data_json": str(output_data_json_path.resolve())}
 
-            # --- Chai-1 PQT Conversion if Chai SIF is available ---
             chai1_sif_path_str = self.config.get("chai1_sif_path")
             if chai1_sif_path_str and Path(chai1_sif_path_str).is_file():
                 logger.info("Chai-1 SIF found. Attempting A3M to PQT conversion.")
@@ -308,7 +307,6 @@ class MSAManager:
                         results["chai_pqt_msa_dir"] = str(target_pqt_dir.resolve())
             else:
                 logger.info("Chai-1 SIF not provided or not found. Skipping A3M to PQT conversion.")
-            # --- End of Chai-1 PQT Conversion ---
             
             return results
         else:
