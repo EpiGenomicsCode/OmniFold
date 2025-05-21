@@ -40,21 +40,25 @@ def main(opts):
     chains = [c.strip() for c in opts.chains.split(",")]
     paired_by_tax = {}
     
-    msa_paired_root = opts.msa_root / "paired"
-    msa_combined_root = opts.msa_root / "combined"
+    msa_paired_root = opts.msa_root / "paired" # This line is no longer correct if uniprot.a3m is per chain
+    # msa_combined_root = opts.msa_root / "combined" # This was already effectively replaced by json_extracted_unpaired_msa_dir
 
     if not opts.msa_root.is_dir():
         print(f"Error: MSA root directory {opts.msa_root} does not exist.")
         return
-    if not msa_paired_root.is_dir():
-        print(f"Warning: Paired MSA directory {msa_paired_root} does not exist. Paired MSAs might be missing.")
-    if not msa_combined_root.is_dir():
-        print(f"Warning: Combined/Unpaired MSA directory {msa_combined_root} does not exist. Unpaired MSAs might be missing.")
+    # The checks for msa_paired_root and msa_combined_root might need to be re-evaluated or removed
+    # if not msa_paired_root.is_dir():
+    #     print(f"Warning: Paired MSA directory {msa_paired_root} does not exist. Paired MSAs might be missing.")
+    # if not msa_combined_root.is_dir():
+    #     print(f"Warning: Combined/Unpaired MSA directory {msa_combined_root} does not exist. Unpaired MSAs might be missing.")
 
     for c in chains:
-        paired_a3m_path = msa_paired_root / f"uniprot_{c}.a3m"
-        if not paired_a3m_path.exists():
-            paired_a3m_path = msa_paired_root / f"uniprot_{c}.a3m.gz"
+        # Corrected path to the paired A3M file, assuming it's named 'uniprot.a3m' inside each chain-specific directory
+        chain_specific_msa_dir = opts.msa_root / f"chain_{c}"
+        paired_a3m_path = chain_specific_msa_dir / "uniprot.a3m"
+        
+        if not paired_a3m_path.exists(): # Try .gz as a fallback
+            paired_a3m_path = chain_specific_msa_dir / "uniprot.a3m.gz"
         
         if paired_a3m_path.exists():
             query_seq_header_processed = False
@@ -66,7 +70,8 @@ def main(opts):
                 if not tax: continue
                 paired_by_tax.setdefault(tax, {})[c] = seq
         else:
-            print(f"Warning: Paired A3M file for chain {c} not found at {msa_paired_root / f'uniprot_{c}.a3m'} (or .gz).")
+            # Updated warning message to reflect the new path structure
+            print(f"Warning: Paired A3M file for chain {c} not found at {chain_specific_msa_dir / 'uniprot.a3m'} (or .gz).")
 
     paired = [(tax, seqs) for tax,seqs in paired_by_tax.items()
                                if len(seqs)==len(chains)]
@@ -126,12 +131,12 @@ if __name__ == "__main__":
         description=textwrap.dedent("""\
         Convert AF3 MSAs to Boltz CSV.
         Expects AF3 MSA output structure:
-        <msa_root>/paired/uniprot_<CHAIN_ID>.a3m[.gz]
-        <msa_root>/combined/chain_<CHAIN_ID>_unpaired.a3m[.gz]
+        <msa_root>/chain_<CHAIN_ID>/uniprot.a3m[.gz] (for paired MSAs)
+        And unpaired MSAs provided via --json_extracted_unpaired_msa_dir which should contain <msa_CHAIN_ID>.a3m files.
         Output CSVs will be named <CHAIN_ID>.csv in the --out directory.
         """))
     p.add_argument("--chains", required=True, help="Comma-separated list of chain IDs (e.g., A,B). Must match <CHAIN_ID> in filenames.")
-    p.add_argument("--msa_root", type=pathlib.Path, required=True, help="Root directory of AF3's 'msas' output (e.g., .../experiment_name/msas), used for 'paired/uniprot_*.a3m'.")
+    p.add_argument("--msa_root", type=pathlib.Path, required=True, help="Root directory of AF3's 'msas' output (e.g., .../experiment_name/msas), used for finding 'chain_<CHAIN_ID>/uniprot.a3m'.")
     p.add_argument("--json_extracted_unpaired_msa_dir", type=pathlib.Path, required=True, help="Directory containing unpaired A3Ms extracted from AF3 JSON (e.g., msa_A.a3m, msa_B.a3m).")
     p.add_argument("--out", type=pathlib.Path, required=True, help="Output directory for Boltz CSV files.")
     p.add_argument("--max_paired", type=int, default=256, help="Maximum number of paired sequences to retain.")
