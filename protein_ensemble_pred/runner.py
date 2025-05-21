@@ -201,14 +201,14 @@ class Runner:
                 logger.info("Chai-1: No local MSAs provided and MSA server is disabled.")
 
             optional_chai_params = {
-                "recycle_msa_subsample": "chai1_recycle_msa_subsample",
-                "num_trunk_recycles": "chai1_num_trunk_recycles",
-                "num_diffn_timesteps": "chai1_num_diffn_timesteps",
-                "num_diffn_samples": "chai1_num_diffn_samples",
-                "num_trunk_samples": "chai1_num_trunk_samples",
+                "recycle-msa-subsample": "chai1_recycle_msa_subsample",
+                "num-trunk-recycles": "chai1_num_trunk_recycles",
+                "num-diffn-timesteps": "chai1_num_diffn_timesteps",
+                "num-diffn-samples": "chai1_num_diffn_samples",
+                "num-trunk-samples": "chai1_num_trunk_samples",
                 "seed": "chai1_seed",
                 "device": "chai1_device",
-                "use_templates_server": "chai1_use_templates_server",
+                "use-templates-server": "chai1_use_templates_server",
             }
 
             for cli_opt, config_key in optional_chai_params.items():
