@@ -249,7 +249,7 @@ class ConfigGenerator:
                 modelSeeds=current_model_seeds,
                 sequences=af3_sequences,
                 bondedAtomPairs=job_input.bonded_atom_pairs,
-                version="3",  # Default version for internally generated JSON
+                version=3,  # Default version as integer
                 dialect="alphafold3"  # Default dialect
             )
 
