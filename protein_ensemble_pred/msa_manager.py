@@ -186,6 +186,26 @@ class MSAManager:
 
         cmd = ["singularity", "run", "--nv"] 
 
+        # 1. pipeline.py
+        custom_pipeline_py_host_path_str = "protein_ensemble_pred/singularity_af3/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/pipeline.py"
+        custom_pipeline_py_host_path = Path(custom_pipeline_py_host_path_str)
+        container_pipeline_py_path = "/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/pipeline.py"
+        if custom_pipeline_py_host_path.is_file():
+            cmd.extend(["-B", f"{custom_pipeline_py_host_path.resolve()}:{container_pipeline_py_path}:ro"])
+            logger.info(f"Binding custom pipeline.py: {custom_pipeline_py_host_path.resolve()} -> {container_pipeline_py_path}")
+        else:
+            logger.warning(f"Custom pipeline.py not found at {custom_pipeline_py_host_path.resolve()}. Using SIF default.")
+
+        # 2. run_alphafold.py
+        custom_run_alphafold_py_host_path_str = "protein_ensemble_pred/singularity_af3/alphafold3/run_alphafold.py"
+        custom_run_alphafold_py_host_path = Path(custom_run_alphafold_py_host_path_str)
+        container_run_alphafold_py_path = "/alphafold3/run_alphafold.py"
+        if custom_run_alphafold_py_host_path.is_file():
+            cmd.extend(["-B", f"{custom_run_alphafold_py_host_path.resolve()}:{container_run_alphafold_py_path}:ro"])
+            logger.info(f"Binding custom run_alphafold.py: {custom_run_alphafold_py_host_path.resolve()} -> {container_run_alphafold_py_path}")
+        else:
+            logger.warning(f"Custom run_alphafold.py not found at {custom_run_alphafold_py_host_path.resolve()}. Using SIF default.")
+
         cmd.extend(["-B", f"{temp_input_json_path.parent.resolve()}:/app/input:ro"])
         cmd.extend(["-B", f"{af3_data_pipeline_host_output_base.resolve()}:{container_output_dir_in_af3}"])
         db_dir_host = self.config.get("alphafold3_database_dir")
@@ -228,7 +248,69 @@ class MSAManager:
         
         if output_data_json_path.is_file():
             logger.info(f"AlphaFold 3 MSA data JSON found at: {output_data_json_path.resolve()}")
-            return {"af3_data_json": str(output_data_json_path.resolve())}
+            results = {"af3_data_json": str(output_data_json_path.resolve())}
+
+            # --- Chai-1 PQT Conversion if Chai SIF is available ---
+            chai1_sif_path_str = self.config.get("chai1_sif_path")
+            if chai1_sif_path_str and Path(chai1_sif_path_str).is_file():
+                logger.info("Chai-1 SIF found. Attempting A3M to PQT conversion.")
+                af3_msa_output_base_dir = output_data_json_path.parent
+                source_msas_dir = af3_msa_output_base_dir / "msas"
+                target_pqt_dir = af3_msa_output_base_dir / "msas_forChai"
+                
+                if not source_msas_dir.is_dir():
+                    logger.warning(f"AF3 MSA 'msas' directory not found at {source_msas_dir}. Skipping PQT conversion.")
+                else:
+                    target_pqt_dir.mkdir(parents=True, exist_ok=True)
+                    logger.info(f"Created PQT output directory: {target_pqt_dir}")
+                    
+                    processed_any_pqt = False
+                    for chain_msa_dir in source_msas_dir.iterdir():
+                        if chain_msa_dir.is_dir():
+                            chain_name = chain_msa_dir.name # e.g., "chain_A"
+                            # Define container paths for binding
+                            container_input_a3ms = "/input_a3ms"
+                            container_output_pqts_dir = "/output_pqts"
+                            # Output filename is determined by chai tool using a hash of the sequence.
+                            # So we only provide the output directory to the tool.
+
+                            pqt_cmd = [
+                                "singularity", "exec",
+                                "-B", f"{chain_msa_dir.resolve()}:{container_input_a3ms}:ro",
+                                "-B", f"{target_pqt_dir.resolve()}:{container_output_pqts_dir}",
+                                chai1_sif_path_str,
+                                "chai", "a3m-to-pqt",
+                                "-i", container_input_a3ms, # Input is the DIRECTORY
+                                "-o", container_output_pqts_dir  # Output is also the DIRECTORY
+                            ]
+                            
+                            logger.info(f"Running PQT conversion for {chain_name}: {' '.join(pqt_cmd)}")
+                            # Store current .pqt files to check for new ones later
+                            pqt_files_before = set(f.name for f in target_pqt_dir.glob("*.pqt"))
+                            exit_code, stdout, stderr = self._run_command(pqt_cmd)
+
+                            if exit_code == 0:
+                                pqt_files_after = set(f.name for f in target_pqt_dir.glob("*.pqt"))
+                                new_pqt_files = pqt_files_after - pqt_files_before
+                                if new_pqt_files:
+                                    logger.info(f"Successfully converted A3M to PQT for {chain_name}. New PQT file(s): {', '.join(new_pqt_files)} in {target_pqt_dir}")
+                                    processed_any_pqt = True
+                                else:
+                                    # This case might occur if the tool ran successfully (exit 0) but didn't produce output for some reason (e.g. empty input)
+                                    logger.warning(f"PQT conversion for {chain_name} exited successfully but no new .pqt file was found in {target_pqt_dir}.")
+                                    logger.debug(f"PQT conversion STDOUT for {chain_name}:\n{stdout}")
+                                    logger.debug(f"PQT conversion STDERR for {chain_name}:\n{stderr}")
+                            else:
+                                logger.error(f"PQT conversion failed for {chain_name}. Exit code: {exit_code}")
+                                logger.error(f"PQT conversion STDOUT for {chain_name}:\n{stdout}")
+                    
+                    if processed_any_pqt:
+                        results["chai_pqt_msa_dir"] = str(target_pqt_dir.resolve())
+            else:
+                logger.info("Chai-1 SIF not provided or not found. Skipping A3M to PQT conversion.")
+            # --- End of Chai-1 PQT Conversion ---
+            
+            return results
         else:
             logger.error(f"AlphaFold 3 MSA output data JSON not found at expected location: {output_data_json_path}")
             logger.info(f"Check AF3 pipeline stdout/stderr in debug logs if needed.")

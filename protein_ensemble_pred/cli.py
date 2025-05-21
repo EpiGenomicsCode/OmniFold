@@ -60,23 +60,29 @@ def main():
     container_group = parser.add_argument_group('Singularity Container Paths')
     container_group.add_argument(
         "--alphafold3_sif_path",
-        required=True,
         type=str,
-        help="Path to the AlphaFold3 Singularity image (.sif file)."
+        default=None,
+        help="Path to the AlphaFold3 Singularity image (.sif file). Required if running AlphaFold3."
     )
     container_group.add_argument(
         "--boltz1_sif_path",
-        required=True,
         type=str,
-        help="Path to the Boltz-1 Singularity image (.sif file)."
+        default=None,
+        help="Path to the Boltz-1 Singularity image (.sif file). Required if running Boltz-1."
+    )
+    container_group.add_argument(
+        "--chai1_sif_path",
+        type=str, 
+        default=None,
+        help="Path to the Chai-1 Singularity image (.sif file). If provided, Chai-1 will be run."
     )
 
     model_paths_group = parser.add_argument_group('Model Specific Paths')
     model_paths_group.add_argument(
         "--alphafold3_model_weights_dir",
-        required=True,
         type=str,
-        help="Path to the directory containing AlphaFold3 model parameters/weights."
+        default=None,
+        help="Path to the directory containing AlphaFold3 model parameters/weights. Required if running AlphaFold3."
     )
     model_paths_group.add_argument(
         "--alphafold3_database_dir",
@@ -221,6 +227,94 @@ def main():
         default="mmcif",
         help="Output format for Boltz-1 predictions (default: mmcif)."
     )
+
+    chai1_specific_group = parser.add_argument_group('Chai-1 Specific Parameters')
+    chai1_specific_group.add_argument(
+        "--chai1_use_msa_server",
+        action="store_true",
+        help="Use MSA server for Chai-1 (default: False)."
+    )
+    chai1_specific_group.add_argument(
+        "--chai1_use_templates_server",
+        action="store_true",
+        help="Use templates server for Chai-1 (default: False)."
+    )
+    chai1_specific_group.add_argument(
+        "--chai1_disable_esm_embeddings",
+        action="store_true",
+        help="Disable ESM embeddings for Chai-1 (default: ESM embeddings are enabled)."
+    )
+    chai1_specific_group.add_argument(
+        "--chai1_msa_server_url",
+        type=str,
+        default="https://api.colabfold.com",
+        help="URL for ColabFold MSA server used by Chai-1 (default: https://api.colabfold.com)."
+    )
+    chai1_specific_group.add_argument(
+        "--chai1_msa_directory",
+        type=str,
+        default=None,
+        help="Path to precomputed MSAs for Chai-1 (optional)."
+    )
+    chai1_specific_group.add_argument(
+        "--chai1_constraint_path",
+        type=str,
+        default=None,
+        help="Path to constraints file for Chai-1 (optional)."
+    )
+    chai1_specific_group.add_argument(
+        "--chai1_template_hits_path",
+        type=str,
+        default=None,
+        help="Path to template hits file (e.g., .m8) for Chai-1 (optional)."
+    )
+    chai1_specific_group.add_argument(
+        "--chai1_recycle_msa_subsample",
+        type=int,
+        default=0,
+        help="Number of MSA subsamples for recycling in Chai-1 (default: 0)."
+    )
+    chai1_specific_group.add_argument(
+        "--chai1_num_trunk_recycles",
+        type=int,
+        default=3,
+        help="Number of trunk recycles for Chai-1 (default: 3)."
+    )
+    chai1_specific_group.add_argument(
+        "--chai1_num_diffn_timesteps",
+        type=int,
+        default=200,
+        help="Number of diffusion timesteps for Chai-1 (default: 200)."
+    )
+    chai1_specific_group.add_argument(
+        "--chai1_num_diffn_samples",
+        type=int,
+        default=5,
+        help="Number of diffusion samples for Chai-1 (default: 5)."
+    )
+    chai1_specific_group.add_argument(
+        "--chai1_num_trunk_samples",
+        type=int,
+        default=1,
+        help="Number of trunk samples for Chai-1 (default: 1)."
+    )
+    chai1_specific_group.add_argument(
+        "--chai1_seed",
+        type=int,
+        default=None,
+        help="Random seed for Chai-1 (optional, overrides default_seed for Chai-1 operations)."
+    )
+    chai1_specific_group.add_argument(
+        "--chai1_device",
+        type=str,
+        default=None, # Corresponds to 'cuda:0' in chai1.py if None
+        help="Device for Chai-1 (e.g., 'cuda:0', 'cpu'; default handled by Chai-1: 'cuda:0')."
+    )
+    chai1_specific_group.add_argument(
+        "--chai1_disable_low_memory",
+        action="store_true",
+        help="Disable low memory mode for Chai-1 (default: low memory mode is enabled)."
+    )
     
     args = parser.parse_args()
     logger = setup_logging(args.log_level)
@@ -236,10 +330,11 @@ def main():
         "input_file": os.path.abspath(args.input_file),
         "output_dir": os.path.abspath(args.output_dir),
         
-        "alphafold3_sif_path": os.path.abspath(args.alphafold3_sif_path),
-        "boltz1_sif_path": os.path.abspath(args.boltz1_sif_path),
+        "alphafold3_sif_path": os.path.abspath(args.alphafold3_sif_path) if args.alphafold3_sif_path else None,
+        "boltz1_sif_path": os.path.abspath(args.boltz1_sif_path) if args.boltz1_sif_path else None,
+        "chai1_sif_path": os.path.abspath(args.chai1_sif_path) if args.chai1_sif_path else None,
         
-        "alphafold3_model_weights_dir": os.path.abspath(args.alphafold3_model_weights_dir),
+        "alphafold3_model_weights_dir": os.path.abspath(args.alphafold3_model_weights_dir) if args.alphafold3_model_weights_dir else None,
         "alphafold3_database_dir": os.path.abspath(args.alphafold3_database_dir) if args.alphafold3_database_dir else None,
 
         "msa_method_preference": args.msa_method,
@@ -258,7 +353,7 @@ def main():
         "log_level": args.log_level.upper(),
         
         "alphafold_database_root_path": os.path.abspath(args.alphafold3_database_dir) if args.alphafold3_database_dir else None,
-        "alphafold_model_params_path": os.path.abspath(args.alphafold3_model_weights_dir),
+        "alphafold_model_params_path": os.path.abspath(args.alphafold3_model_weights_dir) if args.alphafold3_model_weights_dir else None,
 
         "af3_num_recycles": args.af3_num_recycles,
         "af3_num_diffusion_samples": args.af3_num_diffusion_samples,
@@ -276,23 +371,62 @@ def main():
         "boltz_write_full_pae": args.boltz_write_full_pae,
         "boltz_write_full_pde": args.boltz_write_full_pde,
         "boltz_output_format": args.boltz_output_format,
+
+        "chai1_use_msa_server": args.chai1_use_msa_server,
+        "chai1_use_templates_server": args.chai1_use_templates_server,
+        "chai1_use_esm_embeddings": not args.chai1_disable_esm_embeddings,
+        "chai1_msa_server_url": args.chai1_msa_server_url,
+        "chai1_msa_directory": os.path.abspath(args.chai1_msa_directory) if args.chai1_msa_directory else None,
+        "chai1_constraint_path": os.path.abspath(args.chai1_constraint_path) if args.chai1_constraint_path else None,
+        "chai1_template_hits_path": os.path.abspath(args.chai1_template_hits_path) if args.chai1_template_hits_path else None,
+        "chai1_recycle_msa_subsample": args.chai1_recycle_msa_subsample,
+        "chai1_num_trunk_recycles": args.chai1_num_trunk_recycles,
+        "chai1_num_diffn_timesteps": args.chai1_num_diffn_timesteps,
+        "chai1_num_diffn_samples": args.chai1_num_diffn_samples,
+        "chai1_num_trunk_samples": args.chai1_num_trunk_samples,
+        "chai1_seed": args.chai1_seed,
+        "chai1_device": args.chai1_device,
+        "chai1_low_memory": not args.chai1_disable_low_memory,
     }
     
     if args.af3_buckets is not None:
         config["af3_buckets"] = args.af3_buckets
     
-    required_paths = [
-        "alphafold3_sif_path", 
-        "boltz1_sif_path", 
-        "alphafold3_model_weights_dir",
+    # --- Path and Model Sanity Checks ---
+    sifs_provided = [
+        config["alphafold3_sif_path"],
+        config["boltz1_sif_path"],
+        config["chai1_sif_path"]
     ]
-    missing_paths = [p for p in required_paths if not config.get(p) or not os.path.exists(config[p])]
-    if missing_paths:
-        for path_key in missing_paths:
-            if not config.get(path_key):
-                 logger.error(f"Missing required configuration parameter: --{path_key.replace('_sif_path','-sif-path').replace('_dir','-dir')}")
-            else:
-                 logger.error(f"Required path does not exist: {config[path_key]} (from --{path_key.replace('_sif_path','-sif-path').replace('_dir','-dir')})")
+    if not any(sifs_provided):
+        logger.error("No Singularity image file (.sif) provided. "
+                     "Please provide at least one SIF path for AlphaFold3, Boltz-1, or Chai-1 "
+                     "using --alphafold3_sif_path, --boltz1_sif_path, or --chai1_sif_path.")
+        sys.exit(1)
+
+    error_messages = []
+
+    # Check AlphaFold3 paths if SIF is provided
+    if config["alphafold3_sif_path"]:
+        if not os.path.exists(config["alphafold3_sif_path"]):
+            error_messages.append(f"AlphaFold3 SIF path does not exist: {config['alphafold3_sif_path']} (from --alphafold3_sif_path)")
+        if not config["alphafold3_model_weights_dir"]:
+            error_messages.append("--alphafold3_model_weights_dir is required when --alphafold3_sif_path is provided.")
+        elif not os.path.exists(config["alphafold3_model_weights_dir"]):
+            error_messages.append(f"AlphaFold3 model weights directory does not exist: {config['alphafold3_model_weights_dir']} (from --alphafold3_model_weights_dir)")
+        # alphafold3_database_dir is optional even if AF3 is run, as AF3 can run MSA-free or with precomputed MSAs
+
+    # Check Boltz-1 path if SIF is provided
+    if config["boltz1_sif_path"] and not os.path.exists(config["boltz1_sif_path"]):
+        error_messages.append(f"Boltz-1 SIF path does not exist: {config['boltz1_sif_path']} (from --boltz1_sif_path)")
+
+    # Check Chai-1 path if SIF is provided
+    if config["chai1_sif_path"] and not os.path.exists(config["chai1_sif_path"]):
+        error_messages.append(f"Chai-1 SIF path does not exist: {config['chai1_sif_path']} (from --chai1_sif_path)")
+    
+    if error_messages:
+        for msg in error_messages:
+            logger.error(msg)
         sys.exit(1)
 
     logger.info("Configuration prepared. Initializing Orchestrator.")
