@@ -214,14 +214,19 @@ class Runner:
             for cli_opt, config_key in optional_chai_params.items():
                 if config_key == "chai1_device":
                     continue
-                if self.config.get(config_key) is not None:
-                    val = self.config[config_key]
-                    if isinstance(val, bool) and val:
-                        model_command.append(f"--{cli_opt}")
-                    elif not isinstance(val, bool):
+                
+                is_user_specified_key = f"{config_key}_is_user_specified"
+                
+                if self.config.get(is_user_specified_key, False):
+                    val = self.config.get(config_key)
+                    
+                    if isinstance(val, bool):
+                        if val:
+                            model_command.append(f"--{cli_opt}")
+                    elif val is not None:
                         model_command.extend([f"--{cli_opt}", str(val)])
             
-            chai_device_arg = self.config.get("chai1_device")
+            chai_device_arg = None
             if gpu_id is not None and chai_device_arg is None:
                 chai_device_arg = "cuda:0"
             

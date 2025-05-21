@@ -270,39 +270,39 @@ def main():
     )
     chai1_specific_group.add_argument(
         "--chai1_recycle_msa_subsample",
-        type=int,
-        default=0,
-        help="Number of MSA subsamples for recycling in Chai-1 (default: 0)."
+        type=int, 
+        default=None, # Default for a parameter that might not be set
+        help="Recycle MSA subsample size for Chai-1 (e.g., 64). Default: Chai-1 internal."
     )
     chai1_specific_group.add_argument(
         "--chai1_num_trunk_recycles",
-        type=int,
-        default=3,
-        help="Number of trunk recycles for Chai-1 (default: 3)."
+        type=int, 
+        default=None, 
+        help="Number of trunk recycles for Chai-1. Default: Chai-1 internal."
     )
     chai1_specific_group.add_argument(
-        "--chai1_num_diffn_timesteps",
-        type=int,
-        default=200,
-        help="Number of diffusion timesteps for Chai-1 (default: 200)."
+        "--chai1_num_diffn_timesteps", 
+        type=int, 
+        default=None, 
+        help="Number of diffusion timesteps for Chai-1. Default: Chai-1 internal."
     )
     chai1_specific_group.add_argument(
-        "--chai1_num_diffn_samples",
-        type=int,
-        default=5,
-        help="Number of diffusion samples for Chai-1 (default: 5)."
+        "--chai1_num_diffn_samples", 
+        type=int, 
+        default=None, 
+        help="Number of diffusion samples for Chai-1. Default: Chai-1 internal."
     )
     chai1_specific_group.add_argument(
-        "--chai1_num_trunk_samples",
-        type=int,
-        default=1,
-        help="Number of trunk samples for Chai-1 (default: 1)."
+        "--chai1_num_trunk_samples", 
+        type=int, 
+        default=None, 
+        help="Number of trunk samples for Chai-1. Default: Chai-1 internal."
     )
     chai1_specific_group.add_argument(
-        "--chai1_seed",
-        type=int,
-        default=None,
-        help="Random seed for Chai-1 (optional, overrides default_seed for Chai-1 operations)."
+        "--chai1_seed", 
+        type=int, 
+        default=None, 
+        help="Random seed for Chai-1. Default: Chai-1 internal."
     )
     chai1_specific_group.add_argument(
         "--chai1_device",
@@ -316,8 +316,59 @@ def main():
         help="Disable low memory mode for Chai-1 (default: low memory mode is enabled)."
     )
     
+    # Store defaults before parsing
+    defaults = {}
+    for action in parser._actions:
+        # Filter out help actions and other non-argument actions
+        if action.dest != "help" and hasattr(action, 'default'):
+            defaults[action.dest] = action.default
+
     args = parser.parse_args()
     logger = setup_logging(args.log_level)
+
+    config = vars(args) # Convert parsed args to a dictionary
+
+    # --- Add _is_user_specified flags for Chai-1 --- 
+    # These correspond to keys in optional_chai_params in runner.py (excluding 'device')
+    chai1_config_keys_map = {
+        "chai1_recycle_msa_subsample": "recycle-msa-subsample",
+        "chai1_num_trunk_recycles": "num-trunk-recycles",
+        "chai1_num_diffn_timesteps": "num-diffn-timesteps",
+        "chai1_num_diffn_samples": "num-diffn-samples",
+        "chai1_num_trunk_samples": "num-trunk-samples",
+        "chai1_seed": "seed",
+        "chai1_use_templates_server": "use-templates-server" # This is an action=store_true flag
+    }
+
+    for arg_dest, _ in chai1_config_keys_map.items():
+        parsed_value = getattr(args, arg_dest, None)
+        default_value = defaults.get(arg_dest)
+        action = next((act for act in parser._actions if act.dest == arg_dest), None)
+
+        user_specified = False
+        if isinstance(action, argparse._StoreTrueAction):
+            # For store_true, it's user-specified if the value is True (meaning flag was present)
+            # and its default was False (or None, though typically False for store_true).
+            # If default is True, it's user-specified if value is False (meaning flag was NOT present, 
+            # but this scenario is less common for positive flags).
+            # Simpler: if value is not the default for a boolean action.
+            if parsed_value != default_value:
+                user_specified = True
+        elif isinstance(action, argparse._StoreFalseAction):
+            if parsed_value != default_value:
+                user_specified = True
+        elif parsed_value is not None and parsed_value != default_value:
+            # For other types, if it's not None and not the default, it was user-specified.
+            # This also handles cases where default is None and user provides a value.
+            user_specified = True
+        elif default_value is None and parsed_value is not None:
+            # Explicitly handles case where default is None and user provides any value.
+            user_specified = True
+        
+        config[f"{arg_dest}_is_user_specified"] = user_specified
+        if user_specified:
+            logger.debug(f"Chai-1 arg '{arg_dest}' was user-specified with value: {parsed_value}")
+    # ---
 
     try:
         os.makedirs(args.output_dir, exist_ok=True)

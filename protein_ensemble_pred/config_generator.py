@@ -323,26 +323,51 @@ class ConfigGenerator:
             
             # Prioritize Boltz CSV MSAs if available
             if job_input.boltz_csv_msa_dir and Path(job_input.boltz_csv_msa_dir).is_dir() and seq_info.molecule_type == "protein":
-
-                job_root_path = config_output_dir.parent # This should be the job's base output directory
-                relative_csv_dir_path = Path(job_input.boltz_csv_msa_dir).relative_to(job_root_path)
-                container_csv_path = Path("/data/job_output") / relative_csv_dir_path / f"{chain_id}.csv"
+                determined_csv_path_for_sequence = ""
+                # Check if this exact sequence has been seen before and already has a CSV path assigned
+                if seq_info.sequence in sequence_to_msa_path_map:
+                    reused_path = sequence_to_msa_path_map[seq_info.sequence]
+                    # Ensure the reused path is indeed a CSV path, not an old A3M path if logic is mixed.
+                    # This check assumes CSV paths will contain "boltz_csv_msas" and end with ".csv"
+                    if "boltz_csv_msas" in reused_path and reused_path.endswith(".csv"):
+                        determined_csv_path_for_sequence = reused_path
+                        logger.info(f"Reusing Boltz CSV MSA path '{determined_csv_path_for_sequence}' for protein {chain_id} due to identical sequence.")
+                    else:
+                        # This case should be rare if CSVs are always processed first for a sequence
+                        logger.warning(f"Sequence for protein {chain_id} seen before, but mapped path '{reused_path}' is not a CSV path. Will attempt to determine new CSV path for this instance.")
                 
-                # Check if the actual CSV file exists on the host before putting it in the config
-                host_csv_path = Path(job_input.boltz_csv_msa_dir) / f"{chain_id}.csv"
-                if host_csv_path.is_file():
+                if not determined_csv_path_for_sequence: # If not reused, determine path for the first occurrence (or if prior was not CSV)
+                    job_root_path = config_output_dir.parent
+                    try:
+                        # Use the original chain_id for the filename, as af3_to_boltz_csv.py creates them per input chain ID
+                        host_csv_file_path = Path(job_input.boltz_csv_msa_dir) / f"{seq_info.chain_id}.csv"
+                        if host_csv_file_path.is_file():
+                            relative_csv_dir_path = Path(job_input.boltz_csv_msa_dir).relative_to(job_root_path)
+                            container_csv_path = Path("/data/job_output") / relative_csv_dir_path / f"{seq_info.chain_id}.csv"
+                            determined_csv_path_for_sequence = str(container_csv_path)
+                            # Store this path for this sequence, using the specific chain's CSV file initially
+                            # If another chain has the same sequence, it will reuse this determined_csv_path_for_sequence
+                            if seq_info.sequence not in sequence_to_msa_path_map or not ("boltz_csv_msas" in sequence_to_msa_path_map[seq_info.sequence] and sequence_to_msa_path_map[seq_info.sequence].endswith(".csv")):
+                                sequence_to_msa_path_map[seq_info.sequence] = determined_csv_path_for_sequence 
+                                logger.info(f"Using Boltz CSV MSA for protein {chain_id}: {host_csv_file_path} (container: {determined_csv_path_for_sequence}). Storing for sequence reuse.")
+                        else:
+                            logger.warning(f"Boltz CSV MSA directory specified ({job_input.boltz_csv_msa_dir}), but CSV file for chain {chain_id} ({host_csv_file_path}) not found. Falling back to A3M logic for this chain.")
+                    except ValueError as e:
+                        logger.error(f"Error determining relative path for Boltz CSV for chain {chain_id}: {e}. Host path: {job_input.boltz_csv_msa_dir}, Job root: {job_root_path}. Falling back to A3M.")
+                        determined_csv_path_for_sequence = "" # Ensure fallback
+                
+                if determined_csv_path_for_sequence: # If a CSV path was successfully determined (either new or reused)
                     entity = {
                         "protein": {
                             "id": chain_id,
                             "sequence": seq_info.sequence,
-                            "msa": str(container_csv_path) # Use the generated CSV path
+                            "msa": determined_csv_path_for_sequence
                         }
                     }
-                    logger.info(f"Using Boltz CSV MSA for protein {chain_id}: {host_csv_path} (container: {container_csv_path})")
-                    sequence_to_msa_path_map[seq_info.sequence] = str(container_csv_path) # Store for reuse
-                else:
-                    logger.warning(f"Boltz CSV MSA directory specified ({job_input.boltz_csv_msa_dir}), but CSV file for chain {chain_id} ({host_csv_path}) not found. Falling back to A3M logic.")
-            
+                    # If it was a new determination for this sequence, it was already stored in the map.
+                    # If it was reused, no need to update the map again with the same value.
+                # If determined_csv_path_for_sequence is empty here, it means CSV path couldn't be used, will fall through to A3M logic.
+
             # If Boltz CSV not used or not found for this chain, proceed with existing A3M logic
             if not entity: # Only if entity was not already created by CSV logic
                 if protein_msa_paths and chain_id in protein_msa_paths:
