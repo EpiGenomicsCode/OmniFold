@@ -179,16 +179,19 @@ class Orchestrator:
                 else:
                     logger.warning("Chai-1 SIF is provided, but no suitable Chai-1 FASTA input was found/generated from the AF3 MSA stage. Skipping Chai-1 execution.")
             
-            num_models_to_run = len(models_to_run_info)
+            if not models_to_run_info:
+                logger.info("No models to run after configuration generation and checks.")
+                return True # Nothing to run, so considered successful completion of an empty workload
 
-            if num_models_to_run == 0:
-                logger.error("No models configured or SIFs available to run.")
+            model_names_for_gpu_assignment = [info[0] for info in models_to_run_info]
+            gpu_assignments = assign_gpus_to_models(model_names_for_gpu_assignment, force_sequential=self.config.get("run_sequentially", False))
+
+            if not gpu_assignments:
+                logger.error("Failed to assign GPUs to models. Aborting execution.")
                 return False
 
-            gpu_assignments = assign_gpus_to_models([info[0] for info in models_to_run_info], force_sequential=self.config.get("run_sequentially", False))
-            
             unique_gpu_ids = set(filter(None, gpu_assignments.values()))
-            if self.config.get("run_sequentially", False) or len(unique_gpu_ids) <= 1 and num_models_to_run > 1:
+            if self.config.get("run_sequentially", False) or len(unique_gpu_ids) <= 1 and len(models_to_run_info) > 1:
                 max_workers = 1
                 logger.info(f"Executing models sequentially with max_workers=1.")
             else:

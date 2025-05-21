@@ -43,7 +43,7 @@ def af3_json_to_chai_fasta(json_path: str | Path, fasta_path: str | Path) -> boo
                     ids = block["id"] if isinstance(block["id"], list) else [block["id"]]
                     seq = block["sequence"]
                     for cid in ids:
-                        header = f"{key}|id={cid}" 
+                        header = f"{key}|name=chain_{cid}"
                         fastas_data.append((header, seq))
                     found_key = True
                     break 

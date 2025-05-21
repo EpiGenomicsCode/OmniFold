@@ -332,7 +332,10 @@ class MSAManager:
                                 logger.error(f"PQT conversion failed for {chain_name}. Exit code: {exit_code}")
                                 logger.error(f"PQT conversion STDOUT for {chain_name}:\n{stdout}")
                     
-                    if processed_any_pqt:
+                    # After attempting all chains, check if any .pqt files exist in the target directory.
+                    pqt_files_in_target = list(target_pqt_dir.glob("*.pqt"))
+                    if pqt_files_in_target:
+                        logger.info(f"PQT conversion successful. Found {len(pqt_files_in_target)} .pqt file(s) in {target_pqt_dir}: {[f.name for f in pqt_files_in_target]}")
                         results["chai_pqt_msa_dir"] = str(target_pqt_dir.resolve())
                         
                         # --- Convert AF3 JSON to Chai FASTA ---
@@ -348,8 +351,10 @@ class MSAManager:
                         else:
                             logger.error(f"Failed to generate Chai FASTA from AF3 JSON {output_data_json_path}.")
                         # --- End of AF3 JSON to Chai FASTA Conversion ---
+                    else:
+                        logger.warning(f"No .pqt files found in {target_pqt_dir} after attempting conversion for all chains. Skipping Chai FASTA generation.")
             else:
-                logger.info("Chai-1 SIF not provided or not found, or PQT conversion did not run/succeed. Skipping AF3 JSON to Chai FASTA conversion.")
+                logger.info("Chai-1 SIF not provided or not found. Skipping PQT conversion and Chai FASTA generation.")
             
             return results
         else:
