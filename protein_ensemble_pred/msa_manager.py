@@ -5,10 +5,12 @@ import logging
 import tempfile # For temporary FASTA
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, List
+import sys # Added for sys.executable
 
 from .config_generator import ConfigGenerator
 from .util.definitions import JobInput, SequenceInfo
 from .util.file_converters import af3_json_to_chai_fasta # Import the new function
+from .util.msa_utils import extract_all_protein_a3ms_from_af3_json # Import the utility
 
 logger = logging.getLogger(__name__)
 
@@ -279,12 +281,37 @@ class MSAManager:
             logger.info(f"AlphaFold 3 MSA data JSON found at: {output_data_json_path.resolve()}")
             results = {"af3_data_json": str(output_data_json_path.resolve())}
 
+            af3_msa_output_actual_dir = output_data_json_path.parent # e.g. .../msa_intermediate_files/job_name_msa_gen/
+
+            # --- Extract Unpaired MSAs from JSON for af3_to_boltz_csv.py and general use ---
+            json_extracted_unpaired_msas_output_dir = af3_msa_output_actual_dir / "json_extracted_unpaired_msas"
+            json_extracted_unpaired_msas_output_dir.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Extracting unpaired MSAs from {output_data_json_path} to {json_extracted_unpaired_msas_output_dir}")
+            
+            protein_ids_in_job = []
+            if self.job_input and self.job_input.sequences:
+                protein_ids_in_job = [seq.chain_id for seq in self.job_input.sequences if seq.molecule_type == 'protein']
+
+            # Call the extraction utility
+            # Note: extract_all_protein_a3ms_from_af3_json returns a dict {protein_id: path}
+            # This utility handles cases where a protein entity in JSON might have multiple IDs (homomers)
+            extracted_json_unpaired_a3m_paths: Optional[Dict[str, str]] = extract_all_protein_a3ms_from_af3_json(
+                json_path=str(output_data_json_path.resolve()),
+                output_dir=str(json_extracted_unpaired_msas_output_dir.resolve())
+            )
+
+            if extracted_json_unpaired_a3m_paths is not None:
+                logger.info(f"Successfully extracted {len(extracted_json_unpaired_a3m_paths)} unpaired A3M files from JSON.")
+                results["protein_id_to_json_unpaired_a3m_path"] = extracted_json_unpaired_a3m_paths
+            else:
+                logger.error(f"Failed to extract unpaired A3Ms from JSON {output_data_json_path}. This might affect Boltz CSV generation.")
+            # ---
+
             chai1_sif_path_str = self.config.get("chai1_sif_path")
             if chai1_sif_path_str and Path(chai1_sif_path_str).is_file():
                 logger.info("Chai-1 SIF found. Attempting A3M to PQT conversion.")
-                af3_msa_output_base_dir = output_data_json_path.parent
-                source_msas_dir = af3_msa_output_base_dir / "msas"
-                target_pqt_dir = af3_msa_output_base_dir / "msas_forChai"
+                source_msas_dir = af3_msa_output_actual_dir / "msas"
+                target_pqt_dir = af3_msa_output_actual_dir / "msas_forChai"
                 
                 if not source_msas_dir.is_dir():
                     logger.warning(f"AF3 MSA 'msas' directory not found at {source_msas_dir}. Skipping PQT conversion.")
@@ -339,7 +366,7 @@ class MSAManager:
                         results["chai_pqt_msa_dir"] = str(target_pqt_dir.resolve())
                         
                         # --- Convert AF3 JSON to Chai FASTA ---
-                        chai_fasta_path = af3_msa_output_base_dir / "chai_input.fasta"
+                        chai_fasta_path = af3_msa_output_actual_dir / "chai_input.fasta"
                         logger.info(f"Attempting to convert AF3 JSON {output_data_json_path} to Chai FASTA {chai_fasta_path}")
                         conversion_successful = af3_json_to_chai_fasta(
                             json_path=output_data_json_path, 
@@ -356,6 +383,52 @@ class MSAManager:
             else:
                 logger.info("Chai-1 SIF not provided or not found. Skipping PQT conversion and Chai FASTA generation.")
             
+            # --- Run af3_to_boltz_csv.py script ---
+            if self.job_input and self.job_input.sequences:
+                # af3_msa_output_actual_dir is already defined above
+                source_af3_paired_msas_root_dir = af3_msa_output_actual_dir / "msas" # This is the <msa_root> for paired UniProt A3Ms
+                boltz_csv_output_dir = af3_msa_output_actual_dir / "boltz_csv_msas"
+                boltz_csv_output_dir.mkdir(parents=True, exist_ok=True)
+
+                # chain_ids_for_script was already defined as protein_ids_in_job
+                
+                if protein_ids_in_job and source_af3_paired_msas_root_dir.is_dir() and json_extracted_unpaired_msas_output_dir.is_dir():
+                    script_path = Path(__file__).parent / "util" / "af3_to_boltz_csv.py"
+                    if not script_path.is_file():
+                        logger.error(f"af3_to_boltz_csv.py script not found at {script_path}. Cannot generate Boltz CSVs.")
+                    else:
+                        cmd_boltz_csv = [
+                            sys.executable, str(script_path),
+                            "--chains", ",".join(protein_ids_in_job),
+                            "--msa_root", str(source_af3_paired_msas_root_dir.resolve()), # For uniprot_*.a3m files
+                            "--json_extracted_unpaired_msa_dir", str(json_extracted_unpaired_msas_output_dir.resolve()), # For msa_*.a3m files
+                            "--out", str(boltz_csv_output_dir.resolve()),
+                            "--max_paired", str(self.config.get("boltz_csv_max_paired_msas", 256)),
+                            "--max_total", str(self.config.get("boltz_csv_max_total_msas", 4096))
+                        ]
+                        if self.config.get("boltz_csv_shuffle_paired_msas", False):
+                            cmd_boltz_csv.append("--shuffle_paired")
+                        
+                        logger.info(f"Running af3_to_boltz_csv.py: {' '.join(cmd_boltz_csv)}")
+                        exit_code_csv, stdout_csv, stderr_csv = self._run_command(cmd_boltz_csv)
+
+                        if exit_code_csv == 0:
+                            # Check if any CSV files were actually created
+                            if any(boltz_csv_output_dir.glob("*.csv")):
+                                logger.info(f"Successfully generated Boltz CSV MSAs in {boltz_csv_output_dir}")
+                                results["boltz_csv_msa_dir"] = str(boltz_csv_output_dir.resolve())
+                            else:
+                                logger.warning(f"af3_to_boltz_csv.py ran successfully but no CSV files found in {boltz_csv_output_dir}. Stdout: {stdout_csv}. Stderr: {stderr_csv}")
+                        else:
+                            logger.error(f"af3_to_boltz_csv.py failed with exit code {exit_code_csv}. Stdout: {stdout_csv}. Stderr: {stderr_csv}")
+                elif not protein_ids_in_job:
+                    logger.info("No protein chains found in job input. Skipping Boltz CSV generation.")
+                elif not source_af3_paired_msas_root_dir.is_dir():
+                    logger.warning(f"AF3 'msas' directory for Boltz CSV (paired) conversion not found at {source_af3_paired_msas_root_dir}. Check AF3 output. Skipping CSV gen.")
+                elif not json_extracted_unpaired_msas_output_dir.is_dir():
+                     logger.warning(f"Directory for JSON-extracted unpaired MSAs ({json_extracted_unpaired_msas_output_dir}) not found or extraction failed. Skipping Boltz CSV gen.")
+            # --- End of af3_to_boltz_csv.py script run ---
+
             return results
         else:
             logger.error(f"AlphaFold 3 MSA output data JSON not found at expected location: {output_data_json_path}")
