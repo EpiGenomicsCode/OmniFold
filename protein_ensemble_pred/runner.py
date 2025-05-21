@@ -124,7 +124,6 @@ class Runner:
                 return -1, "", "Boltz-1 SIF path not configured or not found."
 
             job_output_root_host_path = Path(input_config_file_host_path).parent.parent
-
             container_job_output_root = "/data/job_output"
             
             container_config_path = str(Path(container_job_output_root) / Path(input_config_file_host_path).relative_to(job_output_root_host_path))
@@ -157,102 +156,107 @@ class Runner:
             if self.config.get("boltz_output_format"):
                 model_command.extend(["--output_format", self.config["boltz_output_format"]])
 
-            if self.config.get("use_msa_server", False):
-                model_command.append("--use_msa_server")
-                if self.config.get("colabfold_msa_server_url"):
-                    model_command.append("--msa_server_url")
-                    model_command.append(self.config["colabfold_msa_server_url"])
-
         elif model_name == "chai1":
             sif_path = self.config.get("chai1_sif_path")
             if not sif_path or not os.path.exists(sif_path):
                 return -1, "", "Chai-1 SIF path not configured or not found."
 
-            chai_fasta_host_path = input_config_file_host_path # Orchestrator passes FASTA path here
+            chai_fasta_host_path = input_config_file_host_path
             if not os.path.exists(chai_fasta_host_path):
                 return -1, "", f"Chai-1 input FASTA file not found: {chai_fasta_host_path}"
 
-            # Define container paths
             container_fasta_path = "/data/input.fasta"
             container_output_dir = "/data/output"
-            container_msa_dir = "/data/msas" # If PQT MSAs are used
+            container_msa_dir = "/data/msas"
 
-            bind_mounts = [
-                f"{chai_fasta_host_path}:{container_fasta_path}:ro",
-                f"{model_specific_output_dir_host_path}:{container_output_dir}"
-            ]
+            binds = {
+                chai_fasta_host_path: f"{container_fasta_path}:ro",
+                model_specific_output_dir_host_path: container_output_dir
+            }
 
-            model_command_args = [
+            model_command = [
                 "chai-lab",
                 "fold",
-                container_fasta_path,    # Positional FASTA file
-                container_output_dir,    # Positional output directory
+                container_fasta_path,
+                container_output_dir,
             ]
 
-            # Handle MSAs for Chai-1
-            # Priority: 1. PQT from AF3, 2. User-specified MSA dir, 3. Server
-            chai_pqt_msa_dir_host = self.config.get("current_chai1_msa_pqt_dir") # Set by Orchestrator
+            chai_pqt_msa_dir_host = self.config.get("current_chai1_msa_pqt_dir")
             user_msa_dir_host = self.config.get("chai1_msa_directory")
 
             if chai_pqt_msa_dir_host and os.path.isdir(chai_pqt_msa_dir_host):
                 logger.info(f"Chai-1: Using PQT MSA directory (from AF3 MSA): {chai_pqt_msa_dir_host}")
-                bind_mounts.append(f"{chai_pqt_msa_dir_host}:{container_msa_dir}:ro")
-                model_command_args.extend(["--msa_directory", container_msa_dir])
+                binds[chai_pqt_msa_dir_host] = f"{container_msa_dir}:ro"
+                model_command.extend(["--msa_directory", container_msa_dir])
             elif user_msa_dir_host and os.path.isdir(user_msa_dir_host):
                 logger.info(f"Chai-1: Using user-provided MSA directory: {user_msa_dir_host}")
-                bind_mounts.append(f"{user_msa_dir_host}:{container_msa_dir}:ro")
-                model_command_args.extend(["--msa_directory", container_msa_dir])
-            elif self.config.get("chai1_use_msa_server", True): # Default to true if not specified
+                binds[user_msa_dir_host] = f"{container_msa_dir}:ro"
+                model_command.extend(["--msa_directory", container_msa_dir])
+            elif self.config.get("chai1_use_msa_server", True):
                 logger.info("Chai-1: Using MSA server.")
-                model_command_args.append("--use-msa-server")
-                if self.config.get("colabfold_msa_server_url"): # Chai uses same server URL for now
-                    model_command_args.extend(["--msa-server-url", self.config["colabfold_msa_server_url"]])
+                model_command.append("--use-msa-server")
+                if self.config.get("colabfold_msa_server_url"):
+                    model_command.extend(["--msa-server-url", self.config["colabfold_msa_server_url"]])
             else:
-                logger.info("Chai-1: No local MSAs provided and MSA server is disabled. Chai will run without MSAs (uncommon).")
+                logger.info("Chai-1: No local MSAs provided and MSA server is disabled.")
 
-            # Add other optional Chai-1 specific parameters from config
             optional_chai_params = {
-                # "template_hits_path": "chai1_template_hits_path", # Not bound, passed as string path if needed
-                # "constraint_path": "chai1_constraint_path",       # Not bound, passed as string path if needed
-                # "esm_embeddings_path": "chai1_esm_embeddings_path", # Not bound
                 "recycle_msa_subsample": "chai1_recycle_msa_subsample",
                 "num_trunk_recycles": "chai1_num_trunk_recycles",
                 "num_diffn_timesteps": "chai1_num_diffn_timesteps",
                 "num_diffn_samples": "chai1_num_diffn_samples",
-                "num_trunk_samples": "chai1_num_trunk_samples", # Added for completeness
+                "num_trunk_samples": "chai1_num_trunk_samples",
                 "seed": "chai1_seed",
-                "device": "chai1_device", # e.g., cuda:0, will be overridden by runner's GPU assignment logic
-                # "memory_gb_limit": "chai1_memory_gb_limit", # Handled by Singularity if needed
+                "device": "chai1_device",
                 "use_templates_server": "chai1_use_templates_server",
-                # "template_server_url": "chai1_template_server_url" # Add if distinct from MSA server
             }
 
             for cli_opt, config_key in optional_chai_params.items():
+                if config_key == "chai1_device":
+                    continue
                 if self.config.get(config_key) is not None:
                     val = self.config[config_key]
-                    if isinstance(val, bool) and val: # For boolean flags like --use_templates_server
-                        model_command_args.append(f"--{cli_opt}")
-                    elif not isinstance(val, bool): # For value-based options
-                        model_command_args.extend([f"--{cli_opt}", str(val)])
+                    if isinstance(val, bool) and val:
+                        model_command.append(f"--{cli_opt}")
+                    elif not isinstance(val, bool):
+                        model_command.extend([f"--{cli_opt}", str(val)])
             
-            # Construct the full singularity command
-            singularity_cmd = ["singularity", "exec", "--nv"]
-            for bm in bind_mounts:
-                singularity_cmd.extend(["--bind", bm])
-            singularity_cmd.append(sif_path)
-            singularity_cmd.extend(model_command_args)
+            chai_device_arg = self.config.get("chai1_device")
+            if gpu_id is not None and chai_device_arg is None:
+                chai_device_arg = "cuda:0"
             
-            final_command_str = ' '.join(singularity_cmd)
-            logger.info(f"Executing command for {model_name}: {final_command_str}")
+            if chai_device_arg:
+                model_command.extend(["--device", chai_device_arg])
 
         else:
             return -1, "", f"Unsupported model_name: {model_name}"
 
-        use_run = (model_name == "alphafold3") # chai-lab fold is an argument to exec
-        singularity_base_cmd = self._construct_base_singularity_cmd(sif_path, binds, gpu_id, use_run)
-        full_cmd = singularity_base_cmd + model_command
+        full_cmd = []
+        if model_name == "alphafold3":
+            full_cmd = ["singularity", "run"]
+            if gpu_id is not None:
+                full_cmd.append("--nv")
+            for host_path, container_path_spec in binds.items():
+                if os.path.exists(host_path):
+                    full_cmd.extend(["--bind", f"{host_path}:{container_path_spec}"])
+                else:
+                    logger.warning(f"Host path for AF3 binding does not exist, skipping bind: {host_path}")
+            full_cmd.append(sif_path)
+            full_cmd.extend(model_command)
+        
+        else:
+            full_cmd = ["singularity", "exec"]
+            if gpu_id is not None:
+                full_cmd.append("--nv")
+            for host_path, container_path_spec in binds.items():
+                if os.path.exists(host_path):
+                    full_cmd.extend(["--bind", f"{host_path}:{container_path_spec}"])
+                else:
+                    logger.warning(f"Host path for {model_name} binding does not exist, skipping bind: {host_path}")
+            full_cmd.append(sif_path)
+            full_cmd.extend(model_command)
 
-        logger.info(f"Executing command for {model_name}: {' '.join(full_cmd)}")
+        logger.info(f"Final assembled command for {model_name}: {' '.join(full_cmd)}")
 
         env = os.environ.copy()
         if gpu_id is not None:
