@@ -248,7 +248,9 @@ class ConfigGenerator:
                 name=job_input.name_stem,
                 modelSeeds=current_model_seeds,
                 sequences=af3_sequences,
-                bondedAtomPairs=job_input.bonded_atom_pairs
+                bondedAtomPairs=job_input.bonded_atom_pairs,
+                version="3",  # Default version for internally generated JSON
+                dialect="alphafold3"  # Default dialect
             )
 
             json_string = af3_input_data.model_dump_json(indent=2, by_alias=True, exclude_none=True)
