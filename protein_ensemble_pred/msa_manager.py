@@ -307,9 +307,9 @@ class MSAManager:
                                 "-B", f"{chain_msa_dir.resolve()}:{container_input_a3ms}:ro",
                                 "-B", f"{target_pqt_dir.resolve()}:{container_output_pqts_dir}",
                                 chai1_sif_path_str,
-                                "chai", "a3m-to-pqt",
-                                "-i", container_input_a3ms, # Input is the DIRECTORY
-                                "-o", container_output_pqts_dir  # Output is also the DIRECTORY
+                                "chai-lab", "a3m-to-pqt",
+                                container_input_a3ms,
+                                "--output-directory", container_output_pqts_dir
                             ]
                             
                             logger.info(f"Running PQT conversion for {chain_name}: {' '.join(pqt_cmd)}")

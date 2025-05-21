@@ -136,11 +136,20 @@ class ConfigGenerator:
             else:
                 logger.info(f"Using seeds from job_input (original/CLI) for merged AF3 inference JSON: {seeds_for_inference}")
 
+            msa_version = msa_data.get("version")
+            msa_dialect = msa_data.get("dialect", "alphafold3") # Default to alphafold3 if not present
+
+            if msa_version is None:
+                logger.error(f"'version' field is missing in the MSA data source JSON: {msa_data_source_json_path}. Cannot create valid Af3Input.")
+                return None
+
             af3_input_for_inference = Af3Input(
                 name=job_input.name_stem,
                 modelSeeds=seeds_for_inference,
                 sequences=final_sequences_for_pydantic,
-                bondedAtomPairs=job_input.bonded_atom_pairs
+                bondedAtomPairs=job_input.bonded_atom_pairs,
+                version=msa_version, # Pass the extracted version
+                dialect=msa_dialect  # Pass the extracted or default dialect
             )
 
             output_json_path = config_output_dir / target_filename
