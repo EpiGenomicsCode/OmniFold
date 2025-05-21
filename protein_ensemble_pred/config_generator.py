@@ -311,6 +311,7 @@ class ConfigGenerator:
         protein_msa_paths = job_input.protein_id_to_a3m_path
         input_msa_paths = job_input.input_msa_paths
         processed_ids = set()
+        sequence_to_msa_path_map = {} # To map unique sequences to their first determined MSA path
 
         for seq_info in job_input.sequences:
             chain_id = seq_info.chain_id
@@ -329,26 +330,52 @@ class ConfigGenerator:
                 logger.debug(f"Using input MSA path for Boltz chain {chain_id}: {msa_path_for_chain}")
 
             if seq_info.molecule_type == "protein":
-                container_job_output_root = "/data/job_output"
-                msa_filename_only = f"msa_{chain_id}.a3m"
-                container_msa_path = str(Path(container_job_output_root) / "msa_generation" / msa_filename_only)
+                determined_msa_path_for_sequence = ""
+
+                if seq_info.sequence in sequence_to_msa_path_map:
+                    determined_msa_path_for_sequence = sequence_to_msa_path_map[seq_info.sequence]
+                    logger.debug(f"Reusing MSA path '{determined_msa_path_for_sequence}' for identical sequence of protein {chain_id} (original sequence of {seq_info.sequence[:10]}...).")
+                else:
+                    # This is the first time we see this specific sequence
+                    msa_path_on_host_for_chain = None
+                    if protein_msa_paths and chain_id in protein_msa_paths:
+                        msa_path_on_host_for_chain = protein_msa_paths[chain_id]
+                        logger.debug(f"Using extracted/generated MSA path for Boltz chain {chain_id}: {msa_path_on_host_for_chain}")
+                    elif input_msa_paths and chain_id in input_msa_paths:
+                        msa_path_on_host_for_chain = input_msa_paths[chain_id]
+                        logger.debug(f"Using input MSA path for Boltz chain {chain_id}: {msa_path_on_host_for_chain}")
+                    
+                    # Default container path structure
+                    container_job_output_root = "/data/job_output" # This should match Runner's expectation if MSAs are shared
+                    msa_filename_only = f"msa_{chain_id}.a3m" # Unique filename per original chain ID
+                    default_container_msa_path = str(Path(container_job_output_root) / "msa_generation" / msa_filename_only)
+
+                    if msa_path_on_host_for_chain:
+                        if Path(msa_path_on_host_for_chain).name == "empty" or \
+                           (Path(msa_path_on_host_for_chain).exists() and is_a3m_singleton(str(msa_path_on_host_for_chain), seq_info.sequence)):
+                            logger.info(f"A3M for protein {chain_id} ({seq_info.sequence[:10]}...) is a singleton or marked empty. Setting Boltz msa to 'empty'.")
+                            determined_msa_path_for_sequence = "empty"
+                        else:
+                            # If a valid, non-empty MSA exists, use its corresponding default container path
+                            # This assumes the Runner will bind the host msa_output_dir to container_job_output_root/msa_generation
+                            determined_msa_path_for_sequence = default_container_msa_path
+                    elif not job_input.has_msa: # No specific MSA for this chain, and no global MSAs from input
+                         logger.info(f"No specific MSA path found for protein {chain_id} ({seq_info.sequence[:10]}...) and input has_msa is False. Setting Boltz msa to 'empty'.")
+                         determined_msa_path_for_sequence = "empty"
+                    else: # Has MSAs in general (e.g. from AF3 data JSON), but this specific chain didn't have one explicitly listed in protein_id_to_a3m_path
+                         # This case might indicate that the AF3 JSON had MSA for this sequence, and it was extracted to msa_X.a3m
+                         logger.info(f"Protein {chain_id} ({seq_info.sequence[:10]}...) will use default container MSA path {default_container_msa_path}, assuming it was extracted.")
+                         determined_msa_path_for_sequence = default_container_msa_path
+
+                    sequence_to_msa_path_map[seq_info.sequence] = determined_msa_path_for_sequence
 
                 entity = {
                     "protein": {
                         "id": chain_id,
                         "sequence": seq_info.sequence,
-                        "msa": container_msa_path
+                        "msa": determined_msa_path_for_sequence
                     }
                 }
-
-                if msa_path_for_chain:
-                    if Path(msa_path_for_chain).name == "empty" or \
-                       (Path(msa_path_for_chain).exists() and is_a3m_singleton(str(msa_path_for_chain), seq_info.sequence)):
-                        logger.info(f"A3M for protein {chain_id} is a singleton or marked empty. Setting Boltz msa to 'empty'.")
-                        entity["protein"]["msa"] = "empty"
-                elif not job_input.has_msa:
-                     logger.info(f"No specific MSA path found for protein {chain_id} and input has_msa is False. Setting Boltz msa to 'empty'.")
-                     entity["protein"]["msa"] = "empty"
             elif seq_info.molecule_type == "rna":
                 segments_list.append({"id": chain_id, "sequence": seq_info.sequence, "type": "rna"})
             elif seq_info.molecule_type == "dna":
