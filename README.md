@@ -9,7 +9,7 @@ This command-line application simplifies running ensemble protein structure pred
 *   **Internal Conversion:** Automatically converts your input into the specific formats required by each model.
 *   **Unified MSA Handling:** Manages MSA generation or reuse consistently.
     *   If the AlphaFold3 MSA pipeline is used, per-protein A3M files are extracted from its output for use by Boltz-1.
-    *   Additionally, if Chai-1 is being run, the AlphaFold3 MSAs are converted to Chai-1's PQT format.
+    *   Additionally, if Chai-1 is being run, the AlphaFold3 internal a3m states are additionally extracted to suit Chai-1's PQT format.
 *   **Parallel Execution:** Orchestrates predictions with AlphaFold3, Boltz-1, and Chai-1, potentially in parallel on different GPUs.
 *   **Containerized Runs:** Executes models reliably within their Singularity containers.
 *   **Organized Output:** Saves the native outputs from each model into a structured output directory.
@@ -31,16 +31,16 @@ This tool accepts inputs in FASTA, AlphaFold3 JSON, and Boltz-1 YAML formats.
 *   For detailed **FASTA** formatting guidelines, see [docs/fasta.md](docs/fasta.md).
 *   For the official **AlphaFold3 JSON** input specification, please refer to the [AlphaFold3 Input Documentation](https://github.com/google-deepmind/alphafold3/blob/main/docs/input.md).
 *   For the official **Boltz-1 YAML** input specification, please refer to the [Boltz Prediction Documentation](https://github.com/jwohlwend/boltz/blob/main/docs/prediction.md).
-*   For **Chai-1 FASTA** input format, the tool generates it automatically if using AlphaFold3 MSAs. The headers follow the pattern `>protein|name=chain_X`, `>rna|name=chain_Y`, etc.
+*   For **Chai-1 FASTA** input format, the tool generates it automatically if using AlphaFold3 MSAs. The headers follow the pattern `>protein|name=chain_X`, `>rna|name=chain_Y`, etc. A standard fasta format sticking to the [documentation](docs/fasta.md) is recommended but not required. 
 
 ### Model and Data Paths
 
-The following paths must be provided as command-line arguments when running the application, if the respective model is to be run:
+The following paths must be provided as command-line arguments if the respective model is intended to be run:
 
-*   **AlphaFold3 Singularity Image (`--alphafold3_sif_path`):** Absolute path to the AlphaFold3 Singularity image file (`.sif`).
-*   **Boltz-1 Singularity Image (`--boltz1_sif_path`):** Absolute path to the Boltz-1 Singularity image file (`.sif`).
-*   **Chai-1 Singularity Image (`--chai1_sif_path`):** Absolute path to the Chai-1 Singularity image file (`.sif`). (Optional, only if running Chai-1)
-*   **AlphaFold3 Model Weights (`--alphafold3_model_weights_dir`):** Absolute path to the directory containing the downloaded AlphaFold3 model parameters/weights.
+*   **AlphaFold3 Singularity Image (`--alphafold3_sif_path`):** Absolute path to the AlphaFold3 Singularity image file (`.sif`). If not provided, AlphaFold3 will be skipped.
+*   **Boltz-1 Singularity Image (`--boltz1_sif_path`):** Absolute path to the Boltz-1 Singularity image file (`.sif`). If not provided, Boltz-1 will be skipped.
+*   **Chai-1 Singularity Image (`--chai1_sif_path`):** Absolute path to the Chai-1 Singularity image file (`.sif`). If not provided, Chai-1 will be skipped.
+*   **AlphaFold3 Model Weights (`--alphafold3_model_weights_dir`):** Absolute path to the directory containing the downloaded AlphaFold3 model parameters/weights. (Required if running AlphaFold3).
 
 ### Optional (but often necessary) Paths
 
@@ -130,14 +130,15 @@ The application will create the specified output directory. Inside this director
     *   If `msa_method` is `alphafold3` (default), it runs the AlphaFold3 data pipeline using its Singularity container. This tool utilizes modified versions of AlphaFold3's internal `pipeline.py` and `run_alphafold.py` scripts (bound from `protein_ensemble_pred/singularity_af3/...` into the container at runtime) to ensure comprehensive A3M file generation (e.g., UniRef90, MGnify, etc.) for each chain within the standard AlphaFold3 output structure. Caching is restructured to allow for this change. 
         *   The resulting AlphaFold3 `_data.json` is parsed to extract per-protein A3M files from the generated MSAs, which are then made available for Boltz-1.
         *   If Chai-1 is to be run, the A3M files from the AlphaFold3 output (`msas/chain_X/*.a3m`) are converted into Chai-1's PQT format (`msas_forChai/*.pqt`).
-    *   If `msa_method` is `colabfold`, it invokes the Boltz Singularity container with flags to use its MSA server functionality (which typically calls a ColabFold API) to retrieve MSAs, again making them available for Boltz-1. (Chai-1 currently relies on AF3 MSA pipeline for PQT generation through this tool).
+    *   If `msa_method` is `colabfold`, it invokes the Boltz Singularity container with flags to use its MSA server functionality (which typically calls a ColabFold API) to retrieve MSAs, again making them available for Boltz-1.
     *   Existing MSAs from the input file can also be used, bypassing generation.
 3.  **Configuration Generation:** Creates the specific input files (AF3 JSON, Boltz YAML, Chai-1 FASTA) required by each model, incorporating the standardized sequence data and consistent MSA information.
 4.  **Orchestration & Execution:**
+    *   Determines which models (AlphaFold3, Boltz-1, Chai-1) to run based on whether their respective Singularity image paths (`--alphafold3_sif_path`, `--boltz1_sif_path`, `--chai1_sif_path`) have been provided by the user. Models without a SIF path are skipped.
     *   Detects available GPUs.
-    *   Assigns GPUs to models (one per model if available and different models are run, or runs sequentially on a single GPU).
-    *   Constructs and executes `singularity run/exec` commands for AlphaFold3, Boltz-1, and Chai-1, binding necessary directories (input configs, output, model weights, databases, MSAs).
-5.  **Output Collection:** Gathers results and logs from all model runs into the specified output directory.
+    *   Assigns GPUs to the selected models (one per model if available and different models are run, or runs sequentially on a single GPU).
+    *   Constructs and executes `singularity run/exec` commands for the selected models, binding necessary directories (input configs, output, model weights, databases, MSAs).
+5.  **Output Collection:** Gathers results and logs from all executed model runs into the specified output directory.
 
 ## Acknowledgements
 - AlphaFold by DeepMind Technologies Limited
