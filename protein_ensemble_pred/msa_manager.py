@@ -243,10 +243,38 @@ class MSAManager:
             return None
         
 
-        expected_output_subdirectory = af3_data_pipeline_host_output_base / internal_json_name_stem
-        expected_output_filename = f"{internal_json_name_stem}_data.json"
-        output_data_json_path = expected_output_subdirectory / expected_output_filename
+        # Determine the name_prefix from the input JSON file, which dictates the subdirectory AF3 creates
+        input_json_path_obj = Path(temp_input_json_path)
+
+        try:
+            with open(input_json_path_obj, 'r') as f_json:
+                input_data = json.load(f_json)
+            name_from_json_field = input_data.get("name")
+
+            if name_from_json_field and isinstance(name_from_json_field, str) and name_from_json_field.strip():
+                # Use the "name" field from the JSON file, sanitize, and lowercase
+                sanitized_name = "".join(c if c.isalnum() or c in ['_','-'] else '_' for c in name_from_json_field)
+                name_prefix = sanitized_name.lower()
+                logger.info(f"Derived name_prefix '{name_prefix}' from JSON 'name' field ('{name_from_json_field}'), sanitized and lowercased.")
+            else:
+                # Fallback to the input JSON filename's stem, and lowercase
+                name_prefix = input_json_path_obj.stem.lower()
+                logger.info(f"Derived name_prefix '{name_prefix}' from input JSON filename stem ('{input_json_path_obj.stem}'), lowercased (no valid 'name' field found in JSON).")
+        except Exception as e_json:
+            # Fallback if JSON parsing fails or 'name' field access has issues
+            logger.warning(f"Could not robustly read 'name' field from {input_json_path_obj} (Error: {e_json}). "
+                           f"Falling back to filename stem ('{input_json_path_obj.stem}'), lowercased.")
+            name_prefix = input_json_path_obj.stem.lower()
+
+        logger.info(f"Final name_prefix for AF3 output directory determination: '{name_prefix}'")
         
+        # This is the base directory on the host where AF3 outputs will be written to by Singularity
+        # (e.g., /path/to/msa_intermediate_files)
+        af3_msa_output_base_dir_host = self.msa_tmp_dir
+
+        # Path to the AF3-generated _data.json file, considering AF3 creates a subdirectory named 'name_prefix'
+        output_data_json_path = af3_msa_output_base_dir_host / name_prefix / f"{name_prefix}_data.json"
+
         if output_data_json_path.is_file():
             logger.info(f"AlphaFold 3 MSA data JSON found at: {output_data_json_path.resolve()}")
             results = {"af3_data_json": str(output_data_json_path.resolve())}
