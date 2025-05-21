@@ -163,10 +163,112 @@ class Runner:
                     model_command.append("--msa_server_url")
                     model_command.append(self.config["colabfold_msa_server_url"])
 
+        elif model_name == "chai1":
+            sif_path = self.config.get("chai1_sif_path")
+            if not sif_path or not os.path.exists(sif_path):
+                return -1, "", "Chai-1 SIF path not configured or not found."
+
+            chai_fasta_host_path = input_config_file_host_path # Orchestrator passes FASTA path here
+            if not os.path.exists(chai_fasta_host_path):
+                return -1, "", f"Chai-1 input FASTA file not found: {chai_fasta_host_path}"
+
+            container_fasta_path = "/data/input.fasta"
+            container_output_dir_path = "/data/output"
+            container_msa_dir_path = "/data/msas" 
+
+            binds = {
+                chai_fasta_host_path: container_fasta_path,
+                model_specific_output_dir_host_path: container_output_dir_path,
+            }
+
+            model_command = ["chai-lab", "fold"]
+            model_command.extend(["--fasta_file", container_fasta_path])
+            model_command.extend(["--output_dir", container_output_dir_path])
+
+            # MSA Directory Handling
+            # Priority: 1. PQTs from AF3 MSA stage, 2. User-specified general MSA dir for Chai
+            current_pqt_msa_dir = self.config.get("current_chai1_msa_pqt_dir")
+            user_msa_dir = self.config.get("chai1_msa_directory")
+
+            if not self.config.get("chai1_use_msa_server"):
+                msa_dir_to_bind_host = None
+                if current_pqt_msa_dir and os.path.isdir(current_pqt_msa_dir):
+                    msa_dir_to_bind_host = current_pqt_msa_dir
+                    logger.info(f"Chai-1: Using PQT MSA directory (from AF3 MSA): {msa_dir_to_bind_host}")
+                elif user_msa_dir and os.path.isdir(user_msa_dir):
+                    msa_dir_to_bind_host = user_msa_dir
+                    logger.info(f"Chai-1: Using user-specified MSA directory: {msa_dir_to_bind_host}")
+                
+                if msa_dir_to_bind_host:
+                    binds[msa_dir_to_bind_host] = container_msa_dir_path
+                    model_command.extend(["--msa_directory", container_msa_dir_path])
+                elif not current_pqt_msa_dir and not user_msa_dir:
+                     logger.info("Chai-1: No local MSA directory provided and not using MSA server. Chai will run MSA-free or use internal defaults.")
+                elif current_pqt_msa_dir and not os.path.isdir(current_pqt_msa_dir):
+                    logger.warning(f"Chai-1: PQT MSA directory {current_pqt_msa_dir} not found. Will proceed without local MSAs.")
+                elif user_msa_dir and not os.path.isdir(user_msa_dir):
+                    logger.warning(f"Chai-1: User-specified MSA directory {user_msa_dir} not found. Will proceed without local MSAs.")
+            else:
+                logger.info("Chai-1: Configured to use MSA server.")
+                if self.config.get("chai1_msa_server_url"):
+                    model_command.extend(["--msa-server-url", self.config["chai1_msa_server_url"]])
+
+            # Add other chai-lab fold arguments from config
+            # Boolean flags (presence of flag means True, absence means False for chai-lab CLI typically)
+            if self.config.get("chai1_use_msa_server"):
+                 model_command.append("--use-msa-server") # Added above if logic allows, this ensures it if logic was bypassed by server priority
+            if self.config.get("chai1_use_templates_server"):
+                model_command.append("--use-templates-server")
+            
+            # Valued arguments
+            # Note: For paths like template_hits_path and constraint_path, we are NOT binding them here.
+            # If the user provides these to the CLI, they are passed as string arguments to chai-lab fold.
+            # Chai-1/Singularity would need to handle access if these are host paths.
+            # This Runner only explicitly binds the core input/output/MSA dirs.
+            passthrough_args = {
+                "chai1_template_hits_path": "--template_hits_path",
+                "chai1_constraint_path": "--constraint_path",
+                "chai1_msa_server_url": "--msa-server-url", # Already handled if use_msa_server is true, but safe to list
+                "chai1_recycle_msa_subsample": "--recycle_msa_subsample",
+                "chai1_num_trunk_recycles": "--num_trunk_recycles",
+                "chai1_num_diffn_timesteps": "--num_diffn_timesteps",
+                "chai1_num_diffn_samples": "--num_diffn_samples",
+                "chai1_num_trunk_samples": "--num_trunk_samples",
+                # chai1_seed and chai1_device are handled specially below due to defaults/gpu_id interaction
+            }
+            for config_key, cli_flag in passthrough_args.items():
+                if self.config.get(config_key) is not None:
+                    # Special handling for msa-server-url to avoid duplication if already added
+                    if cli_flag == "--msa-server-url" and "--use-msa-server" in model_command:
+                        if cli_flag not in model_command: # only add if not already there by the server block
+                             model_command.extend([cli_flag, str(self.config[config_key])])
+                    else:
+                        model_command.extend([cli_flag, str(self.config[config_key])])
+
+            # Seed: Use chai1_seed if provided, else orchestrator's default_seed
+            seed_to_use = self.config.get("chai1_seed") if self.config.get("chai1_seed") is not None else self.config.get("default_seed")
+            if seed_to_use is not None:
+                model_command.extend(["--seed", str(seed_to_use)])
+
+            # Device argument for Chai-1
+            chai_device_arg = self.config.get("chai1_device")
+            if chai_device_arg is None and gpu_id is not None: # If user didn't specify, but a GPU is assigned
+                 chai_device_arg = "cuda:0" # Chai will see the assigned GPU as cuda:0 due to CUDA_VISIBLE_DEVICES
+            if chai_device_arg:
+                 model_command.extend(["--device", chai_device_arg])
+
+            # Boolean flags that map to value strings for chai-lab run_inference function
+            # Example: --use_esm_embeddings=False (if default is True in run_inference)
+            # Assuming chai-lab fold CLI directly takes these boolean-like valued flags
+            if not self.config.get("chai1_use_esm_embeddings", True):
+                 model_command.append("--use_esm_embeddings=False")
+            if not self.config.get("chai1_low_memory", True):
+                 model_command.append("--low_memory=False")
+
         else:
             return -1, "", f"Unsupported model_name: {model_name}"
 
-        use_run = (model_name == "alphafold3")
+        use_run = (model_name == "alphafold3") # chai-lab fold is an argument to exec
         singularity_base_cmd = self._construct_base_singularity_cmd(sif_path, binds, gpu_id, use_run)
         full_cmd = singularity_base_cmd + model_command
 

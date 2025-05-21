@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional, Tuple, List
 
 from .config_generator import ConfigGenerator
 from .util.definitions import JobInput, SequenceInfo
+from .util.file_converters import af3_json_to_chai_fasta # Import the new function
 
 logger = logging.getLogger(__name__)
 
@@ -305,8 +306,22 @@ class MSAManager:
                     
                     if processed_any_pqt:
                         results["chai_pqt_msa_dir"] = str(target_pqt_dir.resolve())
+                        
+                        # --- Convert AF3 JSON to Chai FASTA ---
+                        chai_fasta_path = af3_msa_output_base_dir / "chai_input.fasta"
+                        logger.info(f"Attempting to convert AF3 JSON {output_data_json_path} to Chai FASTA {chai_fasta_path}")
+                        conversion_successful = af3_json_to_chai_fasta(
+                            json_path=output_data_json_path, 
+                            fasta_path=chai_fasta_path
+                        )
+                        if conversion_successful:
+                            results["chai_fasta_path"] = str(chai_fasta_path.resolve())
+                            logger.info(f"Successfully generated Chai FASTA: {chai_fasta_path}")
+                        else:
+                            logger.error(f"Failed to generate Chai FASTA from AF3 JSON {output_data_json_path}.")
+                        # --- End of AF3 JSON to Chai FASTA Conversion ---
             else:
-                logger.info("Chai-1 SIF not provided or not found. Skipping A3M to PQT conversion.")
+                logger.info("Chai-1 SIF not provided or not found, or PQT conversion did not run/succeed. Skipping AF3 JSON to Chai FASTA conversion.")
             
             return results
         else:

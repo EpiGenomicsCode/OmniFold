@@ -46,6 +46,9 @@ class Orchestrator:
         os.makedirs(self.af3_output_dir, exist_ok=True)
         os.makedirs(self.boltz_output_dir, exist_ok=True)
 
+        self.chai1_output_dir = os.path.join(output_dir, "chai1")
+        os.makedirs(self.chai1_output_dir, exist_ok=True)
+
         self._setup_logging()
 
     def _setup_logging(self):
@@ -156,15 +159,33 @@ class Orchestrator:
                 logger.error("Failed to generate model configurations.")
                 return False
             
-            num_models_to_run = 0
-            if "af3_config_path" in configs: num_models_to_run +=1
-            if "boltz_config_path" in configs: num_models_to_run +=1
+            models_to_run_info = []
+            if "af3_config_path" in configs and self.config.get("alphafold3_sif_path"):
+                models_to_run_info.append(("alphafold3", configs["af3_config_path"], "af3_output_dir"))
+            if "boltz_config_path" in configs and self.config.get("boltz1_sif_path"):
+                models_to_run_info.append(("boltz1", configs["boltz_config_path"], "boltz_output_dir"))
+
+            chai_fasta_path_for_runner = None
+            if self.config.get("chai1_sif_path"):
+                if msa_result and msa_result.get("chai_fasta_path"):
+                    chai_fasta_path_for_runner = msa_result["chai_fasta_path"]
+                    logger.info(f"Chai-1 will use FASTA generated from AF3 MSA stage: {chai_fasta_path_for_runner}")
+                    if msa_result.get("chai_pqt_msa_dir"):
+                        self.config["current_chai1_msa_pqt_dir"] = msa_result["chai_pqt_msa_dir"]
+                        logger.info(f"Chai-1 will use PQT MSA from AF3 MSA stage: {msa_result['chai_pqt_msa_dir']}")
+                    else:
+                        logger.info("Chai-1: No PQT MSA directory found from AF3 MSA stage. Will rely on other MSA settings for Chai-1 (server or chai1_msa_directory).")
+                    models_to_run_info.append(("chai1", chai_fasta_path_for_runner, "chai1_output_dir"))
+                else:
+                    logger.warning("Chai-1 SIF is provided, but no suitable Chai-1 FASTA input was found/generated from the AF3 MSA stage. Skipping Chai-1 execution.")
+            
+            num_models_to_run = len(models_to_run_info)
 
             if num_models_to_run == 0:
-                logger.error("No model configurations available to run.")
+                logger.error("No models configured or SIFs available to run.")
                 return False
 
-            gpu_assignments = assign_gpus_to_models(num_models_to_run, force_sequential=self.config.get("run_sequentially", False))
+            gpu_assignments = assign_gpus_to_models([info[0] for info in models_to_run_info], force_sequential=self.config.get("run_sequentially", False))
             
             unique_gpu_ids = set(filter(None, gpu_assignments.values()))
             if self.config.get("run_sequentially", False) or len(unique_gpu_ids) <= 1 and num_models_to_run > 1:
@@ -178,60 +199,47 @@ class Orchestrator:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = []
                 
-                if "af3_config_path" in configs:
-                    af3_gpu = gpu_assignments.get("alphafold3")
-                    if af3_gpu is not None:
+                for model_name, config_path_or_fasta, output_dir_attr in models_to_run_info:
+                    model_gpu = gpu_assignments.get(model_name)
+                    model_output_dir = getattr(self, output_dir_attr)
+                    
+                    if model_gpu is not None:
                         futures.append(
                             executor.submit(
                                 self._run_model,
-                                "alphafold3",
-                                configs["af3_config_path"],
-                                self.af3_output_dir,
-                                af3_gpu
+                                model_name,
+                                config_path_or_fasta,
+                                model_output_dir,
+                                model_gpu
                             )
                         )
                     else:
-                        logger.warning("No GPU assigned for AlphaFold3, skipping execution.")
-                else:
-                    logger.info("No AlphaFold3 configuration generated, skipping execution.")
-
-                if "boltz_config_path" in configs:
-                    boltz_gpu = gpu_assignments.get("boltz1")
-                    if boltz_gpu is not None:
-                        futures.append(
-                            executor.submit(
-                                self._run_model,
-                                "boltz1",
-                                configs["boltz_config_path"],
-                                self.boltz_output_dir,
-                                boltz_gpu
-                            )
-                        )
-                    else:
-                        logger.warning("No GPU assigned for Boltz-1, skipping execution.")
-                else:
-                    logger.info("No Boltz-1 configuration generated, skipping execution.")
+                        logger.warning(f"No GPU assigned for {model_name}, skipping execution.")
 
                 if not futures:
-                    logger.error("No models were submitted for execution.")
+                    logger.error("No models were submitted for execution (e.g., due to no GPU assignment or no SIFs).")
                     return False
                 
                 num_submitted = len(futures)
-                processed_models = set()
+                processed_models_map = {id(future): models_to_run_info[i][0] for i, future in enumerate(futures)} 
+                
                 for future in as_completed(futures):
+                    model_name_completed = processed_models_map.get(id(future), f"unknown_model__{id(future)}")
                     try:
-                        model_name_order = [m for m in ["alphafold3", "boltz1"] if m in gpu_assignments and m not in processed_models]
-                        model_name = model_name_order[0] if model_name_order else f"unknown_model_{len(processed_models)}"                        
                         result = future.result()
-                        results[model_name] = result
-                        processed_models.add(model_name)
-                        logger.info(f"Received result for {model_name}")
+                        results[model_name_completed] = result
+                        logger.info(f"Received result for {model_name_completed}")
                     except Exception as e:
-                        logger.error(f"A model execution failed: {e}", exc_info=True)
-                        return False
+                        logger.error(f"Model execution for {model_name_completed} failed: {e}", exc_info=True)
+                        if model_name_completed not in results:
+                            results[model_name_completed] = (-1, "", f"Future failed with exception: {e}")
+                    finally:
+                        if model_name_completed == "chai1" and "current_chai1_msa_pqt_dir" in self.config:
+                            del self.config["current_chai1_msa_pqt_dir"]
+                            logger.info("Cleaned up temporary Chai-1 PQT MSA directory path from config.")
             
             if len(results) != num_submitted:
-                logger.error("Mismatch in submitted vs completed models. Some models may have failed silently.")
+                logger.error("Mismatch in submitted vs completed models. Some models may have failed or not reported results properly.")
                 return False
 
             success = True
@@ -267,7 +275,7 @@ class Orchestrator:
                 f.write("Protein Ensemble Prediction Summary\n")
                 f.write("================================\n\n")
                 
-                model_order = ["alphafold3", "boltz1"]
+                model_order = ["alphafold3", "boltz1", "chai1"]
                 for model_name in model_order:
                     if model_name in results:
                         exit_code, stdout, stderr = results[model_name]
@@ -281,6 +289,7 @@ class Orchestrator:
                 f.write("\nOutput Directories:\n")
                 f.write(f"AlphaFold3: {os.path.relpath(self.af3_output_dir, self.output_dir)}\n")
                 f.write(f"Boltz-1: {os.path.relpath(self.boltz_output_dir, self.output_dir)}\n")
+                f.write(f"Chai-1: {os.path.relpath(self.chai1_output_dir, self.output_dir)}\n")
             logger.info(f"Prediction summary written to: {summary_path}")
         except IOError as e:
             logger.error(f"Failed to write summary file {summary_path}: {e}")
