@@ -8,7 +8,7 @@ This command-line application simplifies running ensemble protein structure pred
 
 *   **Internal Conversion:** Automatically converts your input into the specific formats required by each model.
 *   **Unified MSA Handling:** Manages MSA generation or reuse consistently.
-    *   If the AlphaFold3 MSA pipeline is used, per-protein A3M files are extracted from its output for use by Boltz-1.
+    *   If the AlphaFold3 MSA pipeline is used, the unpaired and paired A3M files are extracted to form the csv file for Boltz to consume.
     *   Additionally, if Chai-1 is being run, the AlphaFold3 internal a3m states are extracted to suit Chai-1's PQT format.
 *   **Parallel Execution:** Orchestrates predictions with AlphaFold3, Boltz-1, and Chai-1, potentially in parallel on different GPUs.
 *   **Containerized Runs:** Executes models reliably within their Singularity containers.
