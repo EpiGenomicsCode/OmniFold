@@ -187,11 +187,11 @@ class Runner:
             if chai_pqt_msa_dir_host and os.path.isdir(chai_pqt_msa_dir_host):
                 logger.info(f"Chai-1: Using PQT MSA directory (from AF3 MSA): {chai_pqt_msa_dir_host}")
                 binds[chai_pqt_msa_dir_host] = f"{container_msa_dir}:ro"
-                model_command.extend(["--msa_directory", container_msa_dir])
+                model_command.extend(["--msa-directory", container_msa_dir])
             elif user_msa_dir_host and os.path.isdir(user_msa_dir_host):
                 logger.info(f"Chai-1: Using user-provided MSA directory: {user_msa_dir_host}")
                 binds[user_msa_dir_host] = f"{container_msa_dir}:ro"
-                model_command.extend(["--msa_directory", container_msa_dir])
+                model_command.extend(["--msa-directory", container_msa_dir])
             elif self.config.get("chai1_use_msa_server", True):
                 logger.info("Chai-1: Using MSA server.")
                 model_command.append("--use-msa-server")
