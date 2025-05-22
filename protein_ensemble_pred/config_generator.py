@@ -344,14 +344,28 @@ class ConfigGenerator:
                         # Use the original chain_id for the filename, as af3_to_boltz_csv.py creates them per input chain ID
                         host_csv_file_path = Path(job_input.boltz_csv_msa_dir) / f"{seq_info.chain_id}.csv"
                         if host_csv_file_path.is_file():
-                            relative_csv_dir_path = Path(job_input.boltz_csv_msa_dir).relative_to(job_root_path)
-                            container_csv_path = Path("/data/job_output") / relative_csv_dir_path / f"{seq_info.chain_id}.csv"
-                            determined_csv_path_for_sequence = str(container_csv_path)
+                            # Check if the CSV file is empty or just has a header
+                            with open(host_csv_file_path, 'r') as csv_f:
+                                lines = csv_f.readlines()
+                                if len(lines) <= 1: # Only header or empty
+                                    logger.info(f"Boltz CSV file {host_csv_file_path} for chain {chain_id} is empty or has only a header. Setting MSA to 'empty'.")
+                                    determined_csv_path_for_sequence = "empty"
+                                else:
+                                    relative_csv_dir_path = Path(job_input.boltz_csv_msa_dir).relative_to(job_root_path)
+                                    container_csv_path = Path("/data/job_output") / relative_csv_dir_path / f"{seq_info.chain_id}.csv"
+                                    determined_csv_path_for_sequence = str(container_csv_path)
+                            
                             # Store this path for this sequence, using the specific chain's CSV file initially
                             # If another chain has the same sequence, it will reuse this determined_csv_path_for_sequence
-                            if seq_info.sequence not in sequence_to_msa_path_map or not ("boltz_csv_msas" in sequence_to_msa_path_map[seq_info.sequence] and sequence_to_msa_path_map[seq_info.sequence].endswith(".csv")):
+                            # This mapping should happen regardless of whether it's "empty" or a path, to ensure consistent reuse for identical sequences.
+                            if seq_info.sequence not in sequence_to_msa_path_map or \
+                               (determined_csv_path_for_sequence == "empty" and sequence_to_msa_path_map.get(seq_info.sequence) != "empty") or \
+                               (determined_csv_path_for_sequence != "empty" and not ("boltz_csv_msas" in sequence_to_msa_path_map.get(seq_info.sequence, "") and sequence_to_msa_path_map.get(seq_info.sequence, "").endswith(".csv"))):
                                 sequence_to_msa_path_map[seq_info.sequence] = determined_csv_path_for_sequence 
-                                logger.info(f"Using Boltz CSV MSA for protein {chain_id}: {host_csv_file_path} (container: {determined_csv_path_for_sequence}). Storing for sequence reuse.")
+                                if determined_csv_path_for_sequence == "empty":
+                                    logger.info(f"MSA for protein {chain_id} (sequence starting {seq_info.sequence[:10]}...) will be 'empty' due to empty CSV. Storing for sequence reuse.")
+                                else:
+                                    logger.info(f"Using Boltz CSV MSA for protein {chain_id}: {host_csv_file_path} (container: {determined_csv_path_for_sequence}). Storing for sequence reuse.")
                         else:
                             logger.warning(f"Boltz CSV MSA directory specified ({job_input.boltz_csv_msa_dir}), but CSV file for chain {chain_id} ({host_csv_file_path}) not found. Falling back to A3M logic for this chain.")
                     except ValueError as e:
