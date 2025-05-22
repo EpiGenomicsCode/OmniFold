@@ -13,7 +13,8 @@ license = {text = "MIT License"}
 dependencies = [
     "pyfastx",
     "PyYAML",
-    "pydantic"
+    "pydantic",
+    "requests"
 ]
 
 [project.scripts]

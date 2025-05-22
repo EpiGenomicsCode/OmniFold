@@ -1,3 +1,4 @@
 pyfastx
 PyYAML
 pydantic 
+requests
