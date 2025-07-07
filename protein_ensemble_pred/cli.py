@@ -214,6 +214,7 @@ def main():
     boltz_specific_group.add_argument(
         "--boltz_write_full_pae",
         action="store_true",
+        default=True,
         help="Write full PAE (Predicted Aligned Error) to output (default: False)."
     )
     boltz_specific_group.add_argument(
