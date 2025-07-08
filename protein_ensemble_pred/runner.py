@@ -174,6 +174,21 @@ class Runner:
                 model_specific_output_dir_host_path: container_output_dir
             }
 
+            # Bind modified chai1 files for development and testing PAE output.
+            # These paths should be relative to the project root from where the script is run.
+            modified_chai_files = {
+                "chai1_modifications/rank.py": "/usr/local/lib/python3.10/dist-packages/chai_lab/ranking/rank.py",
+                "chai1_modifications/chai1.py": "/usr/local/lib/python3.10/dist-packages/chai_lab/chai1.py",
+            }
+            for host_path, container_path in modified_chai_files.items():
+                # Make host path absolute to be safe.
+                abs_host_path = os.path.abspath(host_path)
+                if os.path.exists(abs_host_path):
+                    binds[abs_host_path] = f"{container_path}:ro"
+                else:
+                    logger.warning(f"Modified chai file not found, not binding: {abs_host_path}")
+
+
             model_command = [
                 "chai-lab",
                 "fold",
