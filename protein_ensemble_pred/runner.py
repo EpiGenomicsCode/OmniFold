@@ -177,8 +177,8 @@ class Runner:
             # Bind modified chai1 files for development and testing PAE output.
             # These paths should be relative to the project root from where the script is run.
             modified_chai_files = {
-                "chai1_modifications/rank.py": "/usr/local/lib/python3.10/dist-packages/chai_lab/ranking/rank.py",
-                "chai1_modifications/chai1.py": "/usr/local/lib/python3.10/dist-packages/chai_lab/chai1.py",
+                "protein_ensemble_pred/chai1_modifications/rank.py": "/usr/local/lib/python3.10/dist-packages/chai_lab/ranking/rank.py",
+                "protein_ensemble_pred/chai1_modifications/chai1.py": "/usr/local/lib/python3.10/dist-packages/chai_lab/chai1.py",
             }
             for host_path, container_path in modified_chai_files.items():
                 # Make host path absolute to be safe.
