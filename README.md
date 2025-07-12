@@ -55,17 +55,19 @@ The following paths must be provided as command-line arguments if the respective
     git clone https://github.com/EpiGenomicsCode/Protein-Ensemble-Inference.git
     cd Protein-Ensemble-Inference
     ```
-2.  **Install the package and its dependencies:**
-
-    For a standard installation:
+2.  **Install Python Dependencies:** It is highly recommended to use a virtual environment.
     ```bash
-    pip install .
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
     ```
-    For an editable (developer) installation:
+3.  **Install PAE Viewer Dependencies:** To enable the automatic generation of the interactive PAE viewers, you must also install the Node.js dependencies. This is a one-time setup:
     ```bash
-    pip install -e . [--user] # Add --user if you don't have root privileges
+    cd protein_ensemble_pred/html_report/pae-viewer
+    npm install
+    cd ../../..  # Return to the project root directory
     ```
-3.  **Ensure Singularity Images and Data are Accessible:**
+4.  **Ensure Singularity Images and Data are Accessible:**
     *   Download or build the AlphaFold3, Boltz-1, and Chai-1 Singularity images. **We recommend using the pre-built images available from [Protein Structure Containers](https://github.com/EpiGenomicsCode/ProteinStruct-Containers).** Place the `.sif` files in accessible locations on your HPC system.
     *   **Download the AlphaFold3 Model Weights:** Access to the official AlphaFold3 model parameters requires registration for non-commercial use via the [AlphaFold 3 Model Parameters Request Form](https://docs.google.com/forms/d/e/1FAIpQLSfWZAgo1aYk0O4MuAXZj8xRQ8DafeFJnldNOnh_13qAx2ceZw/viewform). Ensure you meet the terms and download the weights to an accessible directory path.
     *   **Download AlphaFold3 Databases (if needed):** If you plan to use the `alphafold3` MSA generation method, you must download the required databases. Use the official [fetch_databases.sh script](https://github.com/google-deepmind/alphafold3/blob/main/fetch_databases.sh) provided by Google DeepMind. Ensure the databases are stored in an accessible directory path.
@@ -137,19 +139,6 @@ The report includes:
 
 ### Chai-1 PAE & ipSAE Support
 To enable full interface analysis, this tool uses modified Chai-1 scripts (located in `protein_ensemble_pred/chai1_modifications`) that are bound into the container at runtime. This ensures that Chai-1 outputs the PAE matrix required for `ipSAE` and `pDockQ` calculations.
-
-### Developer Setup for PAE Viewers
-The interactive PAE viewers are built using Node.js. If you need to modify or regenerate them, you must first install the required dependencies. This is a one-time setup:
-
-1.  Navigate to the PAE viewer's directory:
-    ```bash
-    cd protein_ensemble_pred/html_report/pae-viewer
-    ```
-2.  Install the required Node.js packages:
-    ```bash
-    npm install
-    ```
-After this, the main script will be able to build the PAE viewer files. The generated viewers are fully self-contained and do not require a web server to run.
 
 ## How it Works
 
