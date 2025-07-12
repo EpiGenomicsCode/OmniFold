@@ -214,13 +214,35 @@
         function sortTableByColumn(table, column, asc = true) {
             const dirModifier = asc ? 1 : -1;
             const tBody = table.tBodies[0];
-            const rows = Array.from(tBody.querySelectorAll("tr.model-row"));
+            const allRows = Array.from(tBody.rows);
 
-            // Sort rows
-            const sortedRows = rows.sort((a, b) => {
-                const aColText = a.querySelector(`td:nth-child(${ column + 1 })`).textContent.trim();
-                const bColText = b.querySelector(`td:nth-child(${ column + 1 })`).textContent.trim();
-                
+            // Group rows: each group contains a main 'model-row' and its subsequent 'sub-row's
+            const rowGroups = [];
+            let currentGroup = [];
+            for (const row of allRows) {
+                if (row.classList.contains('model-row')) {
+                    if (currentGroup.length > 0) {
+                        rowGroups.push(currentGroup);
+                    }
+                    currentGroup = [row];
+                } else if (row.classList.contains('sub-row')) {
+                    // This check ensures we only add sub-rows to a group that has a parent model-row
+                    if (currentGroup.length > 0) {
+                        currentGroup.push(row);
+                    }
+                }
+            }
+            if (currentGroup.length > 0) {
+                rowGroups.push(currentGroup);
+            }
+
+            // Sort the groups based on the content of the specified column in the first row of each group
+            rowGroups.sort((a, b) => {
+                const aRow = a[0]; // The 'model-row' of group a
+                const bRow = b[0]; // The 'model-row' of group b
+                const aColText = aRow.querySelector(`td:nth-child(${ column + 1 })`).textContent.trim();
+                const bColText = bRow.querySelector(`td:nth-child(${ column + 1 })`).textContent.trim();
+
                 const aVal = parseFloat(aColText);
                 const bVal = parseFloat(bColText);
 
@@ -230,37 +252,98 @@
                 return aColText.localeCompare(bColText) * dirModifier;
             });
 
-            // Re-add sorted rows, keeping sub-rows attached
-            while (tBody.firstChild) {
-                tBody.removeChild(tBody.firstChild);
+            // Clear the table body and re-append the rows from the sorted groups
+            tBody.innerHTML = '';
+            for (const group of rowGroups) {
+                for (const row of group) {
+                    tBody.appendChild(row);
+                }
             }
 
-            sortedRows.forEach(row => {
-                tBody.appendChild(row);
-                const methodClass = row.querySelector('.expand-btn')?.dataset.methodClass;
-                if (methodClass) {
-                    document.querySelectorAll('.sub-row-' + methodClass).forEach(subRow => {
-                        tBody.appendChild(subRow);
-                    });
-                }
-            });
-
-            // Update header styles
-            table.querySelectorAll("th").forEach(th => th.classList.remove("sort-asc", "sort-desc"));
-            table.querySelector(`th:nth-child(${ column + 1 })`).classList.toggle("sort-asc", asc);
-            table.querySelector(`th:nth-child(${ column + 1 })`).classList.toggle("sort-desc", !asc);
+            // Update header styles to show sort direction
+            table.querySelectorAll("th.sortable").forEach(th => th.classList.remove("sort-asc", "sort-desc"));
+            const header = table.querySelector(`th:nth-child(${ column + 1 })`);
+            header.classList.add(asc ? "sort-asc" : "sort-desc");
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            document.querySelectorAll('.summary-table th.sortable').forEach(headerCell => {
-                headerCell.addEventListener('click', () => {
-                    const tableElement = headerCell.parentElement.parentElement.parentElement;
+            // Setup sorting on summary table
+            document.querySelectorAll(".summary-table th.sortable").forEach(headerCell => {
+                headerCell.addEventListener("click", () => {
+                    const tableElement = headerCell.closest("table");
                     const headerIndex = Array.prototype.indexOf.call(headerCell.parentElement.children, headerCell);
                     const currentIsAsc = headerCell.classList.contains("sort-asc");
                     sortTableByColumn(tableElement, headerIndex, !currentIsAsc);
                 });
             });
+
+            // Setup expand/collapse functionality
+            document.querySelectorAll('.expand-btn').forEach(button => {
+                button.addEventListener('click', () => {
+                    const methodClass = button.dataset.methodClass;
+                    const icon = button.querySelector('i');
+                    const subRows = document.querySelectorAll('.sub-row-' + methodClass);
+
+                    let isExpanded = icon.classList.contains('fa-minus-square');
+
+                    icon.classList.toggle('fa-plus-square', isExpanded);
+                    icon.classList.toggle('fa-minus-square', !isExpanded);
+
+                    subRows.forEach(row => {
+                        row.style.display = isExpanded ? 'none' : 'table-row';
+                    });
+                });
+            });
+
+            // Modal logic for PAE viewer link errors
+            const paeViewerModal = document.getElementById('paeViewerModal');
+            const closeModal = document.querySelector('.close-button');
+
+            const hideModal = () => {
+                if (paeViewerModal) paeViewerModal.style.display = 'none';
+            };
+
+            if (closeModal) {
+                closeModal.onclick = hideModal;
+            }
+
+            window.onclick = (event) => {
+                if (event.target == paeViewerModal) {
+                    hideModal();
+                }
+            };
         });
+
+        // Function to check if the PAE viewer is accessible
+        let checkTimeout;
+        function checkPaeViewer(url, iframeName) {
+            const modal = document.getElementById('paeViewerModal');
+            const iframe = document.getElementsByName(iframeName)[0];
+
+            // Show a warning after a timeout if we don't get a message back
+            checkTimeout = setTimeout(() => {
+                if(modal) modal.style.display = 'block';
+            }, 1000); // 1 second timeout
+
+            // Listen for a message from the iframe
+            const messageListener = (event) => {
+                // IMPORTANT: Check the origin of the message if the iframes could load untrusted content.
+                // For this case, we assume they are from the same origin or are trusted.
+                if (event.data === `pae-viewer-loaded-${iframeName}`) {
+                    clearTimeout(checkTimeout);
+                    window.removeEventListener('message', messageListener);
+                }
+            };
+            window.addEventListener('message', messageListener, false);
+
+            // If the iframe fails to load, the timeout will trigger the modal.
+            if (iframe) {
+                iframe.onload = () => {
+                    // While this onload fires, we can't tell if it's the actual content or a 404 page.
+                    // We rely on the postMessage from the viewer to confirm successful load.
+                };
+            }
+        }
     </script>
 </head>
 <body>
