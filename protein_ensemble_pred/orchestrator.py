@@ -50,6 +50,9 @@ class Orchestrator:
             # Otherwise, use the user-provided directory as is
             self.output_dir = base_output_dir
 
+        # Ensure the final output directory exists *before* setting up logging
+        os.makedirs(self.output_dir, exist_ok=True)
+
         # Now that the final output directory is determined, setup logging
         self._setup_logging()
 
@@ -66,7 +69,7 @@ class Orchestrator:
         self.boltz_output_dir = self.output_dir / "boltz"
         self.chai1_output_dir = self.output_dir / "chai1"
         
-        for path in [self.output_dir, self.msa_output_dir, self.af3_output_dir, self.boltz_output_dir, self.chai1_output_dir]:
+        for path in [self.msa_output_dir, self.af3_output_dir, self.boltz_output_dir, self.chai1_output_dir]:
             os.makedirs(path, exist_ok=True)
 
         self.msa_manager = MSAManager(self.config, str(self.msa_output_dir))
