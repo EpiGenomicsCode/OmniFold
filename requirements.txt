@@ -1,3 +1,8 @@
+numpy
+pandas
+biopython
+plotly
+jinja2
 pyfastx
 PyYAML
 pydantic 
