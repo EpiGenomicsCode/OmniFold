@@ -1,0 +1,2 @@
+Protein1,SeqPos1,LinkedRes1,Protein2,SeqPos2,LinkedRes2,Highest Score,Match Count,DecoyType,EuclideanDistance,RestraintSatisfied
+P39738,54,K,P39738,428,K,15.46,2,TT,12.020,True

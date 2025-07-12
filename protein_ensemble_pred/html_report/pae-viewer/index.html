@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <title>PAE Viewer</title>
+    <meta http-equiv="content-type" content="application/xhtml+xml; charset=utf-8"/>
+    <meta name="viewport" content="width=device-width, minimum-scale=1.0, maximum-scale=1.0"/>
+    <meta name="theme-color" content="#ffffff">
+
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="icon" sizes="any" href="favicon.ico" >
+
+    <link rel="stylesheet" type="text/css" href="libs/bootstrap.min.css"/>
+    <link rel="stylesheet" type="text/css" href="libs/bootstrap@5.1.3.css"/>
+
+    <link rel="stylesheet" type="text/css" href="src/css/layout.css"/>
+    <link rel="stylesheet" type="text/css" href="src/css/common.css"/>
+    <link rel="stylesheet" type="text/css" href="src/css/structure-carousel.css"/>
+    <link rel="stylesheet" type="text/css" href="src/css/structure-viewer.css"/>
+    <link rel="stylesheet" type="text/css" href="src/css/structure-panel.css"/>
+    <link rel="stylesheet" type="text/css" href="src/css/pae-viewer.css"/>
+    <link rel="stylesheet" type="text/css" href="src/css/complex-sequence-viewer.css"/>
+    <link rel="stylesheet" type="text/css" href="src/css/overrides.css"/>
+
+    <script type="text/javascript" src="libs/jquery.min.js"></script>
+    <script type="text/javascript" src="libs/jquery-ui.min.js"></script>
+    <script type="text/javascript" src="libs/bootstrap.bundle.min.js"></script>
+    <script type="text/javascript" src="libs/ngl.js"></script>
+    <script type="text/javascript" src="libs/chroma.min.js"></script>
+    <script type="text/javascript" src="libs/FileSaver.min.js"></script>
+
+    <script defer src="src/js/setup.js"></script>
+
+    <script defer type="module" src="src/modules/structure-carousel.js"></script>
+    <script defer type="module" src="src/modules/pae-viewer.js"></script>
+    <script defer type="module" src="src/modules/complex-sequence-viewer.js"></script>
+</head>
+<body>
+<noscript>
+    <div class="alert alert-danger text-center">
+        <strong>Error:</strong> JavaScript is disabled or not supported
+        by your browser, but this page requires it to work.
+    </div>
+</noscript>
+<div id="container">
+    <header id="top">
+        <div class="title">PAE Viewer</div>
+        <div class="subtitle">Interactive display of the Predicted Aligned Error</div>
+    </header>
+    <main>
+        {{main.tpl}}
+    </main>
+    <footer class="footer">
+        <div class="footer-segment">
+            <h3>Contact</h3>
+            <ul>
+                <li>
+                    <a href="http://genmibio.uni-goettingen.de/" target="_blank">
+                        General Microbiology Göttingen
+                    </a>
+                </li>
+                <li>Web admin: <a href="mailto:christoph.elfmann@uni-goettingen.de">Christoph Elfmann</a></li>
+                <li>Admin: <a href="mailto:jstuelk@gwdg.de">Jörg Stülke</a></li>
+            </ul>
+        </div>
+    </footer>
+</div>
+</body>
+</html>

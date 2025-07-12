@@ -1,0 +1,26 @@
+{
+  "id": 102,
+  "title": "FliT-FliD",
+  "handle": "FliT-FliD",
+  "structureFile": "examples/FliT-FliD/structure.pdb",
+  "crosslinksFile": "examples/FliT-FliD/crosslinks.csv",
+  "iptm": "0.8638",
+  "ptm": "0.6636",
+  "plddt": "88.7813",
+  "members": [
+    {
+      "id": "4DE156D248FAF7DE3ED9AC35F006B5319A3C1BDA",
+      "title": "FliT",
+      "uniprot": "P39740",
+      "position": 0,
+      "length": 113
+    },
+    {
+      "id": "C6012DEA301DF5B2DDD7E673A736BD3E5163F209",
+      "title": "FliD",
+      "uniprot": "P39738",
+      "position": 1,
+      "length": 498
+    }
+  ]
+}

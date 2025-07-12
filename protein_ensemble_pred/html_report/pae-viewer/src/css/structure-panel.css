@@ -1,0 +1,111 @@
+.structure-panel > * {
+    margin: 1em;
+}
+
+.sp-description {}
+.sp-crosslinks {}
+
+.sp-crosslinks summary {
+    margin-bottom: 1em;
+    cursor: pointer;
+}
+
+.sp-crosslinks > div {
+    margin: 0.5em;
+}
+
+.sp-crosslinks-download {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    background-color: #eee;
+    border-radius: 5px;
+    padding: 0.1em;
+}
+
+.sp-crosslinks-download > * {
+    margin: 0.5em;
+}
+
+.sp-crosslinks-download > span {
+    text-align: center;
+    font-size: smaller;
+}
+
+.sp-toggle-crosslinks-header {
+    margin: 0.6em 0 0.5em 0;
+}
+
+.sp-toggle-crosslinks {
+    border-radius: 5px;
+    padding: 0.1em;
+    margin: 0.2em;
+    max-width: 15em;
+}
+
+.sp-toggle-crosslinks > label {
+    color: var(--font-color);
+    font-weight: normal;
+    display: flex;
+    align-items: center;
+}
+
+.sp-toggle-distances > label {
+    color: var(--font-color);
+    font-weight: normal;
+    display: flex;
+    align-items: center;
+}
+
+.sp-complex > summary {
+    margin-bottom: 1em;
+}
+
+.sp-complex > div {
+    margin-bottom: 1em;
+}
+
+.sp-color-marker {
+    background-color: rgba(100%, 100%, 100%, 50%);
+    color: white;
+    border-radius: 5px;
+    padding: 0 0.3em 0 0.3em;
+    margin: 0.2em;
+}
+
+.sp-chain-marker {
+    margin: 0 0.2em 0 0.2em;
+}
+
+.sp-metrics > ul {
+    margin: 0;
+    list-style-type: none;
+}
+
+.sp-centered-label {
+    color: var(--font-color);
+    font-weight: normal;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.sp-legend-label {
+    font-size: smaller;
+}
+
+.sp-complex > .color-options input {
+    margin: 0.2em;
+}
+
+.sp-confidence-legend {
+    margin: 0.5em;
+}
+
+.sp-color-square {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    aspect-ratio: 1 / 1;
+    margin: 0.2em;
+}

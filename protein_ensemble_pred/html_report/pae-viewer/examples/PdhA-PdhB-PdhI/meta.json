@@ -1,0 +1,33 @@
+{
+  "id": "PdhA-PdhB-PdhI",
+  "title": "PdhA-PdhB-PdhI",
+  "handle": "PdhA-PdhB-PdhI",
+  "structureFile": "examples/PdhA-PdhB-PdhI/structure.pdb",
+  "crosslinksFile": "examples/PdhA-PdhB-PdhI/crosslinks.csv",
+  "iptm": "0.8940",
+  "ptm": "0.9229",
+  "plddt": "95.4577",
+  "members": [
+    {
+      "id": "953DE0F0B81894ECFF4C0693511AC238BF3D0C0A",
+      "title": "PdhA",
+      "uniprot": "P21881",
+      "position": 0,
+      "length": 371
+    },
+    {
+      "id": "458E967052D1093A0F48AE0E6B6CCA0F52EAC44D",
+      "title": "PdhB",
+      "uniprot": "P21882",
+      "position": 1,
+      "length": 325
+    },
+    {
+      "id": "5959516D55C9EDBFC46F28C8248D374832895740",
+      "title": "PdhI",
+      "uniprot": "Q45063",
+      "position": 2,
+      "length": 95
+    }
+  ]
+}

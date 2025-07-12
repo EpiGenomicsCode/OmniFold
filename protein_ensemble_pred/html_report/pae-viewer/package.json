@@ -1,0 +1,8 @@
+{
+  "name": "pae-viewer",
+  "version": "1.0.0",
+  "description": "Interactive display of the Predicted Aligned Error",
+  "devDependencies": {
+    "esbuild": "^0.25.6"
+  }
+}
