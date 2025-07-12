@@ -13,6 +13,7 @@ This command-line application simplifies running ensemble protein structure pred
 *   **Parallel Execution:** Orchestrates predictions with AlphaFold3, Boltz-1, and Chai-1, potentially in parallel on different GPUs.
 *   **Containerized Runs:** Executes models reliably within their Singularity containers.
 *   **Organized Output:** Saves the native outputs from each model into a structured output directory.
+*   **Automated Reporting:** Automatically generates a comprehensive, interactive HTML report (`Protein_Ensemble_Report.zip`) comparing all model outputs, including metrics like `ipSAE` and `pDockQ`.
 
 This eliminates the need for manual format conversions and separate pipeline runs for each model, streamlining your ensemble prediction workflow.
 
@@ -123,6 +124,33 @@ The application will create the specified output directory. Inside this director
 *   Log files (`ensemble_prediction.log`, `alphafold3_run.log`, `boltz_run.log`, `chai1_run.log`).
 *   If MSAs were generated, intermediate MSA files may also be present in a subdirectory (e.g., `msa_intermediate_files`, `msas_forChai`).
 
+## HTML Report Generation
+
+At the end of a successful pipeline run, the tool automatically generates a comprehensive `Protein_Ensemble_Report.zip` file in your output directory. This ZIP contains:
+1.  `final_report.html`: A detailed comparison of all model predictions.
+2.  `pae_viewers/`: A directory containing standalone, interactive PAE (Predicted Aligned Error) viewers for each model generated.
+
+The report includes:
+-   A summary table of key metrics (pLDDT, pTM, ipTM) for the best model from each method.
+-   An interface confidence table with `ipSAE` and `pDockQ` scores for all chain pairs, enabling robust interaction analysis. The `ipSAE` score is calculated based on the method described by Dunbrack et al.
+-   An interactive, overlaid pLDDT plot to compare per-residue confidence across models.
+
+### Chai-1 PAE & ipSAE Support
+To enable full interface analysis, this tool uses modified Chai-1 scripts (located in `protein_ensemble_pred/chai1_modifications`) that are bound into the container at runtime. This ensures that Chai-1 outputs the PAE matrix required for `ipSAE` and `pDockQ` calculations.
+
+### Developer Setup for PAE Viewers
+The interactive PAE viewers are built using Node.js. If you need to modify or regenerate them, you must first install the required dependencies. This is a one-time setup:
+
+1.  Navigate to the PAE viewer's directory:
+    ```bash
+    cd protein_ensemble_pred/html_report/pae-viewer
+    ```
+2.  Install the required Node.js packages:
+    ```bash
+    npm install
+    ```
+After this, the main script will be able to build the PAE viewer files. The generated viewers are fully self-contained and do not require a web server to run.
+
 ## How it Works
 
 1.  **Unified Input Handling:** Parses your single input file (FASTA, AF3 JSON, or Boltz YAML) and standardizes the sequence and chain information internally.
@@ -146,3 +174,6 @@ The application will create the specified output directory. Inside this director
 - Chai 1 by Chai Discovery, Inc.
 - The research project is generously funded by Cornell University BRC Epigenomics Core Facility (RRID:SCR_021287), Penn State Institute for Computational and Data Sciences (RRID:SCR_025154) , Penn State University Center for Applications of Artificial Intelligence and Machine Learning to Industry Core Facility (AIMI) (RRID:SCR_022867) and supported by a gift to AIMI research from Dell Technologies.
 - Computational support was provided by NSF ACCESS to William KM Lai and Gretta Kellogg through BIO230041
+
+## References
+- Dunbrack RL Jr. Rēs ipSAE loquunt: What's wrong with AlphaFold's ipTM score and how to fix it. bioRxiv [Preprint]. 2025 Feb 14:2025.02.10.637595. doi: 10.1101/2025.02.10.637595. PMID: 39990437; PMCID: PMC11844409. [Available at: https://pmc.ncbi.nlm.nih.gov/articles/PMC11844409/](https://pmc.ncbi.nlm.nih.gov/articles/PMC11844409/)
