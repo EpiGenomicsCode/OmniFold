@@ -11,6 +11,7 @@ from .config_generator import ConfigGenerator
 from .runner import Runner
 from .util.gpu_utils import assign_gpus_to_models, set_gpu_visibility
 from .util.msa_utils import extract_all_protein_a3ms_from_af3_json
+from .html_report.generate_report import run_report_generation
 
 logger = logging.getLogger(__name__)
 
@@ -254,6 +255,16 @@ class Orchestrator:
             
             self._write_summary(results)
             
+            # --- Generate Final HTML Report ---
+            if success: # Only generate report if all models succeeded
+                try:
+                    logger.info("Generating final HTML report...")
+                    run_report_generation(Path(self.output_dir))
+                except Exception as e:
+                    logger.error(f"Failed to generate final HTML report: {e}", exc_info=True)
+            else:
+                logger.warning("Skipping final report generation due to model prediction failures.")
+
             return success
             
         except Exception as e:

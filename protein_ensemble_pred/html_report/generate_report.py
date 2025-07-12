@@ -389,15 +389,12 @@ def create_plddt_plot(models_data):
 
 # --- Main Logic ---
 
-def main():
-    """Main function to generate the HTML report."""
-    parser = argparse.ArgumentParser(description="Generate a self-contained HTML report.")
-    parser.add_argument("--output_dir", type=Path, default=Path.cwd())
-    parser.add_argument("--report_path", type=Path, default=None)
-    args = parser.parse_args()
-
-    base_output_dir = args.output_dir
-    report_path = args.report_path if args.report_path else base_output_dir / "final_report.html"
+def run_report_generation(base_output_dir: Path):
+    """
+    Generates the full HTML report and accompanying files.
+    This is the main entry point when called as a library function.
+    """
+    report_path = base_output_dir / "final_report.html"
     
     # Create a dedicated directory for PAE viewers
     pae_viewer_dir = base_output_dir / "pae_viewers"
@@ -408,7 +405,6 @@ def main():
     boltz_dir = base_output_dir / "boltz"
     chai_dir = base_output_dir / "chai1"
 
-    # Use a consistent parsing approach for all models
     all_predictions = {
         "AlphaFold 3": parse_all_af3_outputs(af_dir),
         "Chai-1": parse_all_chai_outputs(chai_dir),
@@ -424,8 +420,6 @@ def main():
     best_models = [preds[0] for preds in all_predictions.values() if preds]
     best_models_names = [m['name'] for m in best_models]
     
-    # --- Data Processing for Tables ---
-    # Highlight the best value in each column of the summary table
     summary_metrics = ['avg_plddt', 'ptm', 'iptm', 'ranking_score']
     best_overall = {}
     for metric in summary_metrics:
@@ -433,10 +427,8 @@ def main():
         if valid_models:
             best_overall[metric] = max(valid_models, key=lambda x: x[metric])['name']
 
-    # --- Run ipSAE and build interface table data ---
     interface_data_by_pair = {}
     all_pairs = set()
-
     for model in best_models:
         model_interface_scores = run_and_parse_ipsae(model)
         for pair, scores in model_interface_scores.items():
@@ -445,7 +437,6 @@ def main():
                 interface_data_by_pair[pair] = {}
             interface_data_by_pair[pair][model['name']] = scores
 
-    # Ensure all models have an entry for all pairs for consistent table rendering
     for pair in all_pairs:
         for model_name in best_models_names:
             if model_name not in interface_data_by_pair.get(pair, {}):
@@ -454,7 +445,6 @@ def main():
     
     plddt_plot_html = create_plddt_plot(best_models)
 
-    # --- Load embedded JS for self-contained report ---
     try:
         plotly_js_path = Path(__file__).parent / "plotly.min.js"
         plotly_js = plotly_js_path.read_text(encoding="utf-8")
@@ -462,7 +452,6 @@ def main():
         print("Warning: plotly.min.js not found. Plot will not be interactive.")
         plotly_js = None
 
-    # --- Render final report ---
     env = Environment(loader=FileSystemLoader(Path(__file__).parent))
     template = env.get_template("template.html")
     
@@ -478,17 +467,22 @@ def main():
     report_path.write_text(html_content, encoding="utf-8")
     print(f"\n✅ Report successfully generated at: {report_path}")
 
-    # --- Create final ZIP archive ---
     zip_path = base_output_dir / "Protein_Ensemble_Report.zip"
     print(f"Creating distributable ZIP file at: {zip_path}")
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-        # Add the main report
         zipf.write(report_path, report_path.name)
-        # Add all generated PAE viewers
         if pae_viewer_dir.exists():
             for pae_file in pae_viewer_dir.glob("*.html"):
                 zipf.write(pae_file, f"{pae_viewer_dir.name}/{pae_file.name}")
     print("✅ ZIP file created successfully.")
+
+
+def main():
+    """CLI entry point for generating the HTML report independently."""
+    parser = argparse.ArgumentParser(description="Generate a self-contained HTML report from existing model outputs.")
+    parser.add_argument("--output_dir", type=Path, required=True, help="The main output directory containing the model subdirectories (alphafold3, boltz, chai1).")
+    args = parser.parse_args()
+    run_report_generation(args.output_dir)
 
 
 if __name__ == "__main__":
