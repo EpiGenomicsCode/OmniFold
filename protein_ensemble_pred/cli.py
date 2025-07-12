@@ -36,11 +36,11 @@ def setup_logging(log_level_str: str):
 def main():
     """
     HPC Protein Ensemble Prediction CLI.
-    Runs protein structure prediction using an ensemble of models (AlphaFold3 and Boltz-1).
+    Runs protein structure prediction using an ensemble of models (AlphaFold3 and Boltz).
     """
     parser = argparse.ArgumentParser(
         description="HPC Protein Ensemble Prediction CLI. \n"
-                    "Runs protein structure prediction using an ensemble of models (AlphaFold3 and Boltz-1).",
+                    "Runs protein structure prediction using an ensemble of models (AlphaFold3 and Boltz).",
         formatter_class=argparse.RawTextHelpFormatter
     )
 
@@ -68,7 +68,7 @@ def main():
         "--boltz1_sif_path",
         type=str,
         default=None,
-        help="Path to the Boltz-1 Singularity image (.sif file). Required if running Boltz-1."
+        help="Path to the Boltz Singularity image (.sif file). Required if running Boltz."
     )
     container_group.add_argument(
         "--chai1_sif_path",
@@ -181,35 +181,31 @@ def main():
         help="(Optional) Token sizes for caching compilations in AlphaFold3. If not provided, AF3 defaults are used."
     )
 
-    boltz_specific_group = parser.add_argument_group('Boltz-1 Specific Parameters')
+    boltz_specific_group = parser.add_argument_group('Boltz Specific Parameters')
     boltz_specific_group.add_argument(
         "--boltz_recycling_steps",
         type=int,
-        default=3,
-        help="Number of recycling steps for Boltz-1 (default: 3)."
+        help="Number of recycling steps for Boltz (default: 3)."
     )
     boltz_specific_group.add_argument(
         "--boltz_sampling_steps",
         type=int,
-        default=200,
-        help="Number of sampling steps for Boltz-1 (default: 200)."
+        help="Number of sampling steps for Boltz (default: 200)."
     )
     boltz_specific_group.add_argument(
         "--boltz_diffusion_samples",
         type=int,
-        default=1,
-        help="Number of diffusion samples for Boltz-1 (default: 1)."
+        help="Number of diffusion samples for Boltz (default: 1)."
     )
     boltz_specific_group.add_argument(
         "--boltz_step_scale",
         type=float,
-        default=1.638,
         help="Step size for diffusion process sampling (recommended between 1 and 2, default: 1.638)."
     )
     boltz_specific_group.add_argument(
         "--boltz_no_potentials",
         action="store_true",
-        help="Disable potentials for steering in Boltz-1 (default: False)."
+        help="Disable potentials for steering in Boltz (default: False)."
     )
     boltz_specific_group.add_argument(
         "--boltz_write_full_pae",
@@ -226,7 +222,7 @@ def main():
         "--boltz_output_format",
         choices=["pdb", "mmcif"],
         default="mmcif",
-        help="Output format for Boltz-1 predictions (default: mmcif)."
+        help="Output format for Boltz predictions (default: mmcif)."
     )
 
     chai1_specific_group = parser.add_argument_group('Chai-1 Specific Parameters')
@@ -445,7 +441,7 @@ def main():
     ]
     if not any(sifs_provided):
         logger.error("No Singularity image file (.sif) provided. "
-                     "Please provide at least one SIF path for AlphaFold3, Boltz-1, or Chai-1 "
+                     "Please provide at least one SIF path for AlphaFold3, Boltz, or Chai-1 "
                      "using --alphafold3_sif_path, --boltz1_sif_path, or --chai1_sif_path.")
         sys.exit(1)
 
@@ -461,9 +457,9 @@ def main():
             error_messages.append(f"AlphaFold3 model weights directory does not exist: {config['alphafold3_model_weights_dir']} (from --alphafold3_model_weights_dir)")
         # alphafold3_database_dir is optional even if AF3 is run, as AF3 can run MSA-free or with precomputed MSAs
 
-    # Check Boltz-1 path if SIF is provided
+    # Check Boltz path if SIF is provided
     if config["boltz1_sif_path"] and not os.path.exists(config["boltz1_sif_path"]):
-        error_messages.append(f"Boltz-1 SIF path does not exist: {config['boltz1_sif_path']} (from --boltz1_sif_path)")
+        error_messages.append(f"Boltz SIF path does not exist: {config['boltz1_sif_path']} (from --boltz1_sif_path)")
 
     # Check Chai-1 path if SIF is provided
     if config["chai1_sif_path"] and not os.path.exists(config["chai1_sif_path"]):
