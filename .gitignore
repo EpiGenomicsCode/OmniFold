@@ -47,7 +47,6 @@ package-lock.json
 /single_test_output/
 /single_test_output-2/
 *.zip
-*.html
 ipsae_*.txt
 ipsae_*.pml
 pae-viewer/boltz_report_*.html

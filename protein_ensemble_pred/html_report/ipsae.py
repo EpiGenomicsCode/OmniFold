@@ -41,24 +41,26 @@ np.set_printoptions(threshold=np.inf)  # for printing out full numpy arrays for 
 # Input and output files and parameters
 
 # Ensure correct usage
-if len(sys.argv) < 5:
+if len(sys.argv) < 6:
     print("Usage for AF2:")
-    print("   python ipsae.py <path_to_pae_json_file> <path_to_pdb_file> <pae_cutoff> <dist_cutoff>")
-    print("   python ipsae.py RAF1_KSR1_scores_rank_001_alphafold2_multimer_v3_model_4_seed_003.json RAF1_KSR1_unrelaxed_rank_001_alphafold2_multimer_v3_model_4_seed_003.pdb 10 10")
+    print("   python ipsae.py <path_to_pae_json_file> <path_to_pdb_file> <pae_cutoff> <dist_cutoff> <output_file_stem>")
+    print("   python ipsae.py RAF1_KSR1_scores_rank_001_alphafold2_multimer_v3_model_4_seed_003.json RAF1_KSR1_unrelaxed_rank_001_alphafold2_multimer_v3_model_4_seed_003.pdb 10 10 /path/to/output_stem")
     print("")
     print("Usage for AF3:")
-    print("   python ipsae.py <path_to_pae_json_file> <path_to_mmcif_file> <pae_cutoff> <dist_cutoff>")
-    print("   python ipsae.py fold_aurka_tpx2_full_data_0.json  fold_aurka_tpx2_model_0.cif 10 10")
+    print("   python ipsae.py <path_to_pae_json_file> <path_to_mmcif_file> <pae_cutoff> <dist_cutoff> <output_file_stem>")
+    print("   python ipsae.py fold_aurka_tpx2_full_data_0.json  fold_aurka_tpx2_model_0.cif 10 10 /path/to/output_stem")
     print("")
     print("Usage for Boltz1:")
-    print("   python ipsae.py <path_to_pae_npz_file> <path_to_mmcif_file> <pae_cutoff> <dist_cutoff>")
-    print("   python ipsae.py pae_AURKA_TPX2_model_0.npz  AURKA_TPX2_model_0.cif 10 10")
+    print("   python ipsae.py <path_to_pae_npz_file> <path_to_mmcif_file> <pae_cutoff> <dist_cutoff> <output_file_stem>")
+    print("   python ipsae.py pae_AURKA_TPX2_model_0.npz  AURKA_TPX2_model_0.cif 10 10 /path/to/output_stem")
     sys.exit(1)
 
 pae_file_path =    sys.argv[1]
 pdb_path =         sys.argv[2]
 pae_cutoff =       float(sys.argv[3])
 dist_cutoff =      float(sys.argv[4])
+output_stem =      sys.argv[5]
+
 pae_string =       str(int(pae_cutoff))
 if pae_cutoff<10:  pae_string="0"+pae_string
 dist_string =      str(int(dist_cutoff))
@@ -67,44 +69,40 @@ if dist_cutoff<10: dist_string="0"+dist_string
 #pae_AURKA_TPX2_model_0.npz
 
 if ".pdb" in pdb_path:
-    pdb_stem=pdb_path.replace(".pdb","")
-    path_stem =     f'{pdb_path.replace(".pdb","")}_{pae_string}_{dist_string}'
+    pdb_stem=os.path.basename(pdb_path).replace(".pdb","")
+    path_stem =     f'{pdb_stem}_{pae_string}_{dist_string}'
     af2 =    True
     af3 =    False
     boltz1 = False
     chai1 =  False
     cif =    False
-elif ".cif" in pdb_path and pae_file_path.endswith(".json"):
-    pdb_stem=pdb_path.replace(".cif","")
-    path_stem =     f'{pdb_path.replace(".cif","")}_{pae_string}_{dist_string}'
-    af2 =    False
-    af3 =    True
-    boltz1 = False
-    chai1 =  False
-    cif =    True
-elif ".cif" in pdb_path and "model_idx" in pdb_path and pae_file_path.endswith(".npz"):
-    pdb_stem=pdb_path.replace(".cif","")
-    path_stem =     f'{pdb_path.replace(".cif","")}_{pae_string}_{dist_string}'
-    af2 =    False
-    af3 =    False
-    boltz1 = False
-    chai1 =  True
-    cif =    True
-elif ".cif" in pdb_path and pae_file_path.endswith(".npz"):
-    pdb_stem=pdb_path.replace(".cif","")
-    path_stem =     f'{pdb_path.replace(".cif","")}_{pae_string}_{dist_string}'
-    af2 =    False
-    af3 =    False
-    boltz1 = True
-    chai1 =  False
-    cif =    True
+elif ".cif" in pdb_path:
+    pdb_stem=os.path.basename(pdb_path).replace(".cif","")
+    path_stem =     f'{pdb_stem}_{pae_string}_{dist_string}'
+    cif = True
+    if pae_file_path.endswith(".json"):
+        af2 =    False
+        af3 =    True
+        boltz1 = False
+        chai1 =  False
+    elif "model_idx" in pdb_path and pae_file_path.endswith(".npz"):
+        af2 =    False
+        af3 =    False
+        boltz1 = False
+        chai1 =  True
+    elif pae_file_path.endswith(".npz"):
+        af2 =    False
+        af3 =    False
+        boltz1 = True
+        chai1 =  False
 else:
     print("Wrong PDB or PAE file type ", pdb_path)
     sys.exit()
     
-file_path =        path_stem + ".txt"
-file2_path =       path_stem + "_byres.txt"
-pml_path =         path_stem + ".pml"
+script_dir = os.path.dirname(os.path.abspath(__file__))
+file_path = os.path.join(script_dir, path_stem + ".txt")
+file2_path = os.path.join(script_dir, path_stem + "_byres.txt")
+pml_path = os.path.join(script_dir, path_stem + ".pml")
 OUT =              open(file_path,'w')
 PML =              open(pml_path,'w')
 OUT2 =             open(file2_path,'w')
@@ -347,6 +345,8 @@ residue_set= {"ALA", "ARG", "ASN", "ASP", "CYS",
               "DA", "DC", "DT", "DG", "A", "C", "U", "G"}
 
 nuc_residue_set = {"DA", "DC", "DT", "DG", "A", "C", "U", "G"}
+
+print(f"DEBUG: Processing pdb_path: {pdb_path}")
 
 with open(pdb_path, 'r') as PDB:
     for line in PDB:
