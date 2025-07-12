@@ -4,6 +4,7 @@ import threading
 from typing import Any, Dict, List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from datetime import datetime
 
 from .input_handler import InputHandler
 from .msa_manager import MSAManager
@@ -26,31 +27,51 @@ class Orchestrator:
         """
         Initialize the Orchestrator.
         
-        Configures paths, initializes components, and sets up output directories.
+        Configures paths, initializes components, and sets up a unique timestamped output directory.
 
         Args:
             config: Global configuration dictionary containing paths and settings
             output_dir: Base output directory for all results
         """
         self.config = config
-        self.output_dir = output_dir
+        base_output_dir = Path(output_dir)
+
+        # Check if the base output directory contains specific model output folders to avoid conflicts
+        model_dirs_exist = any(
+            (base_output_dir / model_dir).exists() for model_dir in ["alphafold3", "boltz", "chai1"]
+        )
+
+        if model_dirs_exist:
+            # If so, create a new timestamped subdirectory for this run
+            run_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            input_file_stem = Path(config["input_file"]).stem
+            self.output_dir = base_output_dir / f"{input_file_stem}_{run_timestamp}"
+        else:
+            # Otherwise, use the user-provided directory as is
+            self.output_dir = base_output_dir
+
+        # Now that the final output directory is determined, setup logging
+        self._setup_logging()
+
+        # Log the directory decision
+        if model_dirs_exist:
+            logger.info(f"Target output directory contains previous results. Creating a new unique subdirectory for this run: {self.output_dir}")
+        else:
+            logger.info(f"Using specified output directory: {self.output_dir}")
+        
+        # Initialize components and create all necessary subdirectories
         self.input_handler = InputHandler()
-        self.msa_output_dir = os.path.join(output_dir, "msa_generation")
-        os.makedirs(self.msa_output_dir, exist_ok=True)
+        self.msa_output_dir = self.output_dir / "msa_generation"
+        self.af3_output_dir = self.output_dir / "alphafold3"
+        self.boltz_output_dir = self.output_dir / "boltz"
+        self.chai1_output_dir = self.output_dir / "chai1"
+        
+        for path in [self.output_dir, self.msa_output_dir, self.af3_output_dir, self.boltz_output_dir, self.chai1_output_dir]:
+            os.makedirs(path, exist_ok=True)
+
         self.msa_manager = MSAManager(self.config, str(self.msa_output_dir))
         self.config_generator = ConfigGenerator()
         self.runner = Runner(self.config)
-
-        os.makedirs(output_dir, exist_ok=True)
-        self.af3_output_dir = os.path.join(output_dir, "alphafold3")
-        self.boltz_output_dir = os.path.join(output_dir, "boltz")
-        os.makedirs(self.af3_output_dir, exist_ok=True)
-        os.makedirs(self.boltz_output_dir, exist_ok=True)
-
-        self.chai1_output_dir = os.path.join(output_dir, "chai1")
-        os.makedirs(self.chai1_output_dir, exist_ok=True)
-
-        self._setup_logging()
 
     def _setup_logging(self):
         """

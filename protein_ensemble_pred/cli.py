@@ -371,13 +371,6 @@ def main():
             logger.debug(f"Chai-1 arg '{arg_dest}' was user-specified with value: {parsed_value}")
     # ---
 
-    try:
-        os.makedirs(args.output_dir, exist_ok=True)
-        logger.info(f"Ensured output directory exists: {args.output_dir}")
-    except OSError as e:
-        logger.error(f"Failed to create output directory {args.output_dir}: {e}")
-        sys.exit(1)
-
     config = {
         "input_file": os.path.abspath(args.input_file),
         "output_dir": os.path.abspath(args.output_dir),
