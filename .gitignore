@@ -1,0 +1,61 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Node.js
+# Ignore all node_modules directories
+node_modules/
+npm-debug.log
+package-lock.json
+
+# macOS
+.DS_Store
+
+# Output files
+/single_test_output/
+/single_test_output-2/
+*.zip
+*.html
+ipsae_*.txt
+ipsae_*.pml
+pae-viewer/boltz_report_*.html
+pae-viewer/chai_report_*.html
+pae-viewer/AF3_*.html
+pae_viewers/
+ipsae_outputs/
+final_report.html
+Protein_Ensemble_Report.zip
+report.html
+pae-viewer/*_report_*.html 
