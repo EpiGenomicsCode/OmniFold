@@ -517,12 +517,13 @@ class MSAManager:
         a3m_dir = colabfold_output_dir / "a3ms"
         protein_id_to_a3m_path = {}
         for header, pqt_path_str in protein_id_to_pqt_path.items():
-            pqt_stem = Path(pqt_path_str).stem
-            # The script creates both single and paired A3Ms. We'll prioritize the paired one
-            # for downstream tools that support it, but will need to handle this choice
-            # in the model-specific config generators. For now, let's just find them.
-            pair_a3m = a3m_dir / f"{pqt_stem}.pair.a3m"
-            single_a3m = a3m_dir / f"{pqt_stem}.single.a3m"
+            # The PQT filename is <HASH>.aligned.pqt. We need to extract the hash.
+            pqt_filename = Path(pqt_path_str).name
+            file_hash = pqt_filename.split(".")[0]
+            
+            # The A3M files are named <HASH>.pair.a3m and <HASH>.single.a3m
+            pair_a3m = a3m_dir / f"{file_hash}.pair.a3m"
+            single_a3m = a3m_dir / f"{file_hash}.single.a3m"
             
             # Simple choice for now: prefer paired if it exists and has content.
             chosen_a3m = None
