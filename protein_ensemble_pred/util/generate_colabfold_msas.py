@@ -101,11 +101,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def main(argv: List[str] | None = None) -> None:  # noqa: D401 – imperative mood is fine here
     args = _build_arg_parser().parse_args(argv)
 
+    # Ensure output directory is a Path object for consistent path handling
+    args.out_dir = Path(args.out_dir)
+    args.out_dir.mkdir(exist_ok=True, parents=True)
+
     logging.basicConfig(level=getattr(logging, args.log_level), format="%(asctime)s - %(levelname)s - %(message)s")
 
     fasta_path = Path(args.fasta).resolve()
-    out_dir = Path(args.out_dir).resolve()
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = args.out_dir
 
     headers, sequences = _read_fasta(fasta_path)
     logging.info("Parsed %d chain(s) from %s", len(sequences), fasta_path)

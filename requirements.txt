@@ -7,3 +7,5 @@ pyfastx
 PyYAML
 pydantic 
 requests
+tqdm
+pyarrow
