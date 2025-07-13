@@ -13,7 +13,7 @@ from .runner import Runner
 from .util.definitions import JobInput
 from .util.gpu_utils import assign_gpus_to_models, set_gpu_visibility
 from .util.msa_utils import extract_all_protein_a3ms_from_af3_json
-from .util.file_converters import convert_a3m_to_boltz_csv
+from .util.af3_to_boltz_csv import convert_a3m_to_boltz_csv
 from .html_report.generate_report import run_report_generation
 
 logger = logging.getLogger(__name__)

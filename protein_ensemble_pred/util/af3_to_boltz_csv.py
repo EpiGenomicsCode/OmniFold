@@ -3,7 +3,8 @@
 Create Boltz-style CSV MSAs from AlphaFold-3 paired+unpaired A3Ms
 Usage:  af3_to_boltz_csv.py  --chains A,B   --msa_root /path/msas   --out /path/csv
 """
-import re, argparse, textwrap, pathlib, random, gzip, sys
+import re, argparse, textwrap, pathlib, random, gzip, sys, os
+import logging
 
 TAX_RE = re.compile(r"(?:OX|TaxID)=(\d+)")
 LOWER  = str.maketrans('', '', 'abcdefghijklmnopqrstuvwxyz')
@@ -144,3 +145,26 @@ if __name__ == "__main__":
     p.add_argument("--shuffle_paired", action='store_true', help="Shuffle paired MSAs before truncation. Useful for variability if many taxa are common.")
 
     main(p.parse_args()) 
+
+logger = logging.getLogger(__name__)
+
+def convert_a3m_to_boltz_csv(protein_to_a3m_path: dict, output_csv_dir: str):
+    """
+    Converts multiple A3M files to Boltz-compatible CSV MSAs.
+
+    Args:
+        protein_to_a3m_path: Dictionary mapping protein IDs to their A3M file paths.
+        output_csv_dir: Path to the directory where output CSV files will be saved.
+    """
+    os.makedirs(output_csv_dir, exist_ok=True)
+    for protein_id, a3m_path in protein_to_a3m_path.items():
+        output_csv_path = os.path.join(output_csv_dir, f"{protein_id}.csv")
+        try:
+            # Re-using the main logic from this script's command-line entry point
+            _process_single_file(a3m_path, output_csv_path)
+            logger.info(f"Successfully converted {a3m_path} to {output_csv_path}")
+        except Exception as e:
+            logger.error(f"Failed to convert {a3m_path} for protein {protein_id}: {e}", exc_info=True)
+            # Create an empty file to signify failure but allow pipeline to continue
+            with open(output_csv_path, 'w') as f:
+                f.write("msa_sequence,deletion_counts\n") 
