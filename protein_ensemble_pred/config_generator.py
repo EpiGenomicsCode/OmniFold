@@ -383,7 +383,12 @@ class ConfigGenerator:
         try:
             with open(yaml_file_path, 'w') as f:
                 yaml.dump(boltz_config, f, sort_keys=False, Dumper=yaml.SafeDumper)
+            
+            # Log the content of the generated YAML
+            with open(yaml_file_path, 'r') as f:
+                yaml_content = f.read()
             logger.info(f"Boltz YAML config generated at: {yaml_file_path}")
+            logger.info(f"--- Boltz Input YAML Content ---\n{yaml_content.strip()}\n---------------------------------")
             return yaml_file_path
         except Exception as e:
             logger.error(f"Error writing Boltz YAML to {yaml_file_path}: {e}", exc_info=True)

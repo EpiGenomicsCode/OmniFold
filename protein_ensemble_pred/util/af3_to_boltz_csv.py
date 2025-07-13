@@ -159,7 +159,9 @@ def convert_a3m_to_boltz_csv(protein_to_a3m_path: dict, output_csv_dir: str):
     """
     os.makedirs(output_csv_dir, exist_ok=True)
     for protein_id, a3m_path in protein_to_a3m_path.items():
-        output_csv_path = os.path.join(output_csv_dir, f"{protein_id.split('|')[0]}.csv")
+        # Ensure we use the simple chain ID for the output filename.
+        simple_chain_id = protein_id.split('|')[0]
+        output_csv_path = os.path.join(output_csv_dir, f"{simple_chain_id}.csv")
         
         try:
             with open(output_csv_path, 'w') as csv_file:
@@ -185,4 +187,4 @@ def convert_a3m_to_boltz_csv(protein_to_a3m_path: dict, output_csv_dir: str):
             logger.error(f"Failed to convert {a3m_path} for protein {protein_id}: {e}", exc_info=True)
             # Create an empty file to signify failure but allow pipeline to continue
             with open(output_csv_path, 'w') as f:
-                f.write("msa_sequence,deletion_counts\n") 
+                csv_file.write("sequence,key\n") 

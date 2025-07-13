@@ -508,7 +508,7 @@ class MSAManager:
             pqt_manifest = json.load(f)
 
         protein_id_to_pqt_path = {
-            header: path for header, path in pqt_manifest.items()
+            header.split('|')[0]: path for header, path in pqt_manifest.items()
         }
         
         # The A3M files are in a subdirectory and are named by hash.
@@ -518,7 +518,8 @@ class MSAManager:
         protein_id_to_unpaired_a3m_path = {}
         protein_id_to_paired_a3m_path = {}
 
-        for header, pqt_path_str in protein_id_to_pqt_path.items():
+        for header, pqt_path_str in pqt_manifest.items():
+            chain_id = header.split('|')[0]
             # The PQT filename is <HASH>.aligned.pqt. We need to extract the hash.
             pqt_filename = Path(pqt_path_str).name
             file_hash = pqt_filename.split(".")[0]
@@ -528,9 +529,9 @@ class MSAManager:
             single_a3m = a3m_dir / f"{file_hash}.single.a3m"
             
             if pair_a3m.is_file():
-                protein_id_to_paired_a3m_path[header] = str(pair_a3m)
+                protein_id_to_paired_a3m_path[chain_id] = str(pair_a3m)
             if single_a3m.is_file():
-                protein_id_to_unpaired_a3m_path[header] = str(single_a3m)
+                protein_id_to_unpaired_a3m_path[chain_id] = str(single_a3m)
 
         if not protein_id_to_unpaired_a3m_path or not protein_id_to_pqt_path:
             logger.error("Failed to map any A3M or PQT files from ColabFold output.")
@@ -538,7 +539,7 @@ class MSAManager:
             
         logger.info(f"Successfully generated MSAs using ColabFold for {len(protein_id_to_unpaired_a3m_path)} chains.")
         
-        return {
+        final_results = {
             "source": "colabfold",
             "protein_id_to_a3m_path": {
                 "unpaired": protein_id_to_unpaired_a3m_path,
@@ -547,4 +548,6 @@ class MSAManager:
             "protein_id_to_pqt_path": protein_id_to_pqt_path,
             "chai_fasta_path": str(temp_fasta_path) # Pass along the FASTA path for Chai-1
         }
+        logger.info(f"--- MSAManager ColabFold Results ---\n{json.dumps(final_results, indent=2)}\n------------------------------------")
+        return final_results
 
