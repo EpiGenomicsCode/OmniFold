@@ -156,8 +156,12 @@ class Orchestrator:
     def _generate_clean_fasta_for_chai(self, job_input: JobInput) -> Optional[str]:
         """
         Creates a new, clean FASTA file suitable for Chai-1, which requires simple headers.
+        Saves the file in the run's 'configs' directory to avoid conflicts.
         """
-        chai_fasta_path = self.chai1_output_dir / f"{job_input.name_stem}_chai_input.fasta"
+        # Place the clean FASTA in the 'configs' subdirectory
+        configs_dir = self.output_dir / "configs"
+        configs_dir.mkdir(exist_ok=True)
+        chai_fasta_path = configs_dir / f"{job_input.name_stem}_chai_input.fasta"
         try:
             with open(chai_fasta_path, "w") as f:
                 for seq_info in job_input.sequences:

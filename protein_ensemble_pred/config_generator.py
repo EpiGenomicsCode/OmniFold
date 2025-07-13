@@ -207,24 +207,18 @@ class ConfigGenerator:
                 if seq_info.molecule_type == "protein":
                     protein_chain_args = common_chain_args.copy()
                     
-                    # Handle the structured dict from ColabFold output
-                    if isinstance(protein_msa_paths, dict) and "unpaired" in protein_msa_paths:
-                        unpaired_path = protein_msa_paths.get("unpaired", {}).get(chain_id)
-                        paired_path = protein_msa_paths.get("paired", {}).get(chain_id)
+                    unpaired_path = protein_msa_paths.get("unpaired", {}).get(chain_id)
+                    paired_path = protein_msa_paths.get("paired", {}).get(chain_id)
 
-                        if unpaired_path:
-                            protein_chain_args["unpairedMsaPath"] = str(Path(unpaired_path).resolve())
+                    # Per AF3 docs, providing unpairedMsaPath is the modern way.
+                    # If paired is also available, provide it. If not, paired must be set to ""
+                    if unpaired_path:
+                        protein_chain_args["unpairedMsaPath"] = str(Path(unpaired_path).resolve())
                         if paired_path:
                             protein_chain_args["pairedMsaPath"] = str(Path(paired_path).resolve())
-                        
-                        # If unpaired is present but paired is not, we must set pairedMsa to ""
-                        if unpaired_path and not paired_path:
-                             protein_chain_args["pairedMsa"] = ""
-
-                    # Handle backward compatibility for a flat dict of paths
-                    elif isinstance(msa_path_for_chain, str):
-                        protein_chain_args["unpairedMsaPath"] = str(Path(msa_path_for_chain).resolve())
-                        protein_chain_args["pairedMsa"] = ""
+                        else:
+                            # This case is important for AF3 validation
+                            protein_chain_args["pairedMsa"] = "" 
                     
                     protein_chain = ProteinChain(**protein_chain_args)
                     entity_to_add = Protein(protein=protein_chain)

@@ -159,41 +159,26 @@ def convert_a3m_to_boltz_csv(protein_to_a3m_path: dict, output_csv_dir: str):
     """
     os.makedirs(output_csv_dir, exist_ok=True)
     for protein_id, a3m_path in protein_to_a3m_path.items():
-        output_csv_path = os.path.join(output_csv_dir, f"{protein_id.split('|')[0]}.csv") # Clean header
+        output_csv_path = os.path.join(output_csv_dir, f"{protein_id.split('|')[0]}.csv")
         
         try:
             with open(output_csv_path, 'w') as csv_file:
-                csv_file.write("msa_sequence,deletion_counts\n")
+                # Corrected Header for Boltz
+                csv_file.write("sequence,key\n")
                 
-                query_seq = None
+                # In this simplified converter, we don't have pairing info, so we'll use a placeholder key.
+                # Boltz uses the key for pairing, -1 or an empty string is suitable for unpaired.
+                key_for_all = -1
+
                 with open(a3m_path, 'r') as a3m_file:
                     for i, line in enumerate(a3m_file):
-                        if line.startswith('>'):
-                            continue # Skip header
+                        if line.startswith('>') or i == 0: # Skip query and all headers
+                            continue 
                         
-                        sequence = line.strip()
-                        if i == 1: # First sequence is the query
-                            query_seq = sequence
-                            continue
+                        sequence = line.strip().translate(LOWER) # Remove gaps
+                        if sequence:
+                             csv_file.write(f'"{sequence}",{key_for_all}\n')
 
-                        if not query_seq:
-                            raise ValueError("Could not determine query sequence from A3M file.")
-
-                        # Calculate deletion counts based on the query
-                        deletion_counts = [0] * len(query_seq)
-                        msa_seq_no_gaps = []
-                        query_idx = 0
-                        for msa_char in sequence:
-                            if msa_char == '-':
-                                if query_idx < len(deletion_counts):
-                                     deletion_counts[query_idx] += 1
-                            else:
-                                msa_seq_no_gaps.append(msa_char)
-                                query_idx += 1
-                        
-                        final_msa_seq = "".join(msa_seq_no_gaps)
-                        final_deletions = ",".join(map(str, deletion_counts))
-                        csv_file.write(f'"{final_msa_seq}","{final_deletions}"\n')
             logger.info(f"Successfully converted {a3m_path} to {output_csv_path}")
 
         except Exception as e:
