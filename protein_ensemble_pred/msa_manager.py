@@ -60,8 +60,14 @@ class MSAManager:
                 cwd=cwd
             )
             logger.debug(f"Command stdout: {process.stdout}")
-            if process.returncode != 0:
-                 logger.warning(f"Command stderr: {process.stderr}")
+
+            # Always log stderr, as many tools (like our MSA script) write
+            # informational logs here. Use INFO level if the command succeeds,
+            # WARNING if it fails.
+            if process.stderr:
+                log_level = logging.WARNING if process.returncode != 0 else logging.INFO
+                logger.log(log_level, f"Command stderr:\n{process.stderr.strip()}")
+            
             return process.returncode, process.stdout, process.stderr
         except FileNotFoundError:
             logger.error(f"Command not found: {cmd[0]}. Ensure it's installed and in PATH.")
