@@ -142,7 +142,17 @@ class Orchestrator:
                 if not msa_result:
                     logger.error("MSA generation failed.")
                     return False
-                
+
+                # Handle ColabFold output
+                if msa_result.get("source") == "colabfold":
+                    if "protein_id_to_a3m_path" in msa_result:
+                        job_input.protein_id_to_a3m_path = msa_result["protein_id_to_a3m_path"]
+                        logger.info(f"Updated job_input with ColabFold A3M paths for {len(job_input.protein_id_to_a3m_path)} chains.")
+                    if "protein_id_to_pqt_path" in msa_result:
+                        job_input.protein_id_to_pqt_path = msa_result["protein_id_to_pqt_path"]
+                        logger.info(f"Updated job_input with ColabFold PQT paths for {len(job_input.protein_id_to_pqt_path)} chains.")
+
+                # Handle AlphaFold 3 output
                 if msa_result.get("af3_data_json"):
                     job_input.af3_data_json = msa_result["af3_data_json"]
                 

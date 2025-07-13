@@ -34,6 +34,7 @@ class JobInput:
     original_af3_config_path: Optional[str] = None
     original_boltz_config_path: Optional[str] = None
     protein_id_to_a3m_path: Dict[str, str] = field(default_factory=dict) 
+    protein_id_to_pqt_path: Dict[str, str] = field(default_factory=dict)
     boltz_csv_msa_dir: Optional[str] = None
     model_seeds: Optional[List[int]] = None
     num_model_seeds_from_input: Optional[int] = None 

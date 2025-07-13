@@ -456,79 +456,87 @@ class MSAManager:
 
     def _run_colabfold_msa_pipeline(self) -> Optional[Dict[str, Any]]:
         """
-        Runs a ColabFold/MMseqs2 MSA pipeline using the Boltz container.
-        Assumes Boltz container has a CLI mode for local MMseqs2 search.
+        Runs the ColabFold MSA generation script.
+        This generates both A3M and Chai-compatible PQT files.
         """
-        logger.info("Starting ColabFold (MMseqs2) MSA pipeline via Boltz container.")
-        if not self.job_input: return None
-
-        boltz_sif_path = self.config.get("boltz_sif_path")
-        if not boltz_sif_path or not Path(boltz_sif_path).is_file():
-            logger.error("Boltz SIF path not configured or not found.")
+        logger.info("Starting ColabFold MSA pipeline.")
+        if not self.job_input:
             return None
-            
+
         temp_fasta_path = self._generate_temp_fasta()
         if not temp_fasta_path:
-             return None
-        input_fasta_filename = temp_fasta_path.name
-        
-        colabfold_msa_output_dir = self.msa_tmp_dir / f"{self.job_input.name_stem}_colabfold_a3m_out"
-        colabfold_msa_output_dir.mkdir(parents=True, exist_ok=True)
+            return None
 
-        container_input_fasta = f"/app/input/{input_fasta_filename}"
-        container_output_dir = "/app/output"
+        colabfold_output_dir = self.msa_tmp_dir / f"{self.job_input.name_stem}_colabfold"
+        colabfold_output_dir.mkdir(exist_ok=True)
 
-        cmd = ["singularity", "exec"]
+        # Use sys.executable to ensure we use the same python interpreter
+        # that is running the main application.
+        cmd = [
+            sys.executable,
+            "-m", "protein_ensemble_pred.util.generate_colabfold_msas",
+            str(temp_fasta_path),
+            "--out_dir", str(colabfold_output_dir),
+            "--write_a3m" # Always write A3M for Boltz/AF3 consumption
+        ]
         
-        cmd.extend(["-B", f"{temp_fasta_path.parent.resolve()}:/app/input:ro"])
-        cmd.extend(["-B", f"{colabfold_msa_output_dir.resolve()}:{container_output_dir}"])
-        
-        cmd.append(boltz_sif_path)
-        
-        cmd.extend([
-            "boltz",
-            "predict",
-            container_input_fasta, 
-            "--output-dir", container_output_dir,
-            "--use_msa_server", 
-            "--msa_only",      
-        ])
-        
-        msa_server_url = self.config.get("colabfold_msa_server_url")
-        if msa_server_url:
-            cmd.extend(["--msa_server_url", msa_server_url])
-            logger.info(f"Using provided MSA server URL: {msa_server_url}")
-        else:
-             logger.info("Using Boltz internal default MSA server URL.")
+        # Note: We are not exposing the --include_templates flag from the underlying
+        # script to the main pipeline config yet. This could be added later.
 
         exit_code, stdout, stderr = self._run_command(cmd)
 
         if exit_code != 0:
-            logger.error(f"ColabFold/Boltz MSA pipeline failed with exit code {exit_code}.")
+            logger.error(f"ColabFold MSA script failed with exit code {exit_code}.")
+            logger.error(f"Stderr: {stderr}")
+            return None
+
+        # --- Parse the output ---
+        # The script is expected to produce a manifest file mapping chain IDs
+        # to their .pqt files. It also produces .a3m files that we need to find.
+        manifest_path = colabfold_output_dir / "msa_map.json"
+        if not manifest_path.is_file():
+            logger.error(f"ColabFold MSA script did not produce the expected manifest file: {manifest_path}")
+            return None
+
+        with open(manifest_path, 'r') as f:
+            pqt_manifest = json.load(f)
+
+        protein_id_to_pqt_path = {
+            header: path for header, path in pqt_manifest.items()
+        }
+        
+        # The A3M files are in a subdirectory and are named by hash.
+        # We need to map them back to the protein IDs. We can do this by
+        # leveraging the PQT manifest, as the base names match.
+        a3m_dir = colabfold_output_dir / "a3ms"
+        protein_id_to_a3m_path = {}
+        for header, pqt_path_str in protein_id_to_pqt_path.items():
+            pqt_stem = Path(pqt_path_str).stem
+            # The script creates both single and paired A3Ms. We'll prioritize the paired one
+            # for downstream tools that support it, but will need to handle this choice
+            # in the model-specific config generators. For now, let's just find them.
+            pair_a3m = a3m_dir / f"{pqt_stem}.pair.a3m"
+            single_a3m = a3m_dir / f"{pqt_stem}.single.a3m"
+            
+            # Simple choice for now: prefer paired if it exists and has content.
+            chosen_a3m = None
+            if pair_a3m.is_file() and pair_a3m.stat().st_size > 0:
+                chosen_a3m = pair_a3m
+            elif single_a3m.is_file():
+                chosen_a3m = single_a3m
+            
+            if chosen_a3m:
+                protein_id_to_a3m_path[header] = str(chosen_a3m)
+
+        if not protein_id_to_a3m_path or not protein_id_to_pqt_path:
+            logger.error("Failed to map any A3M or PQT files from ColabFold output.")
             return None
             
-        protein_id_to_a3m_path: Dict[str, str] = {}
-        found_a3m = False
-        try:
-            for filename in os.listdir(colabfold_msa_output_dir):
-                 if filename.endswith(".a3m"):
-                     parts = filename.split('.a3m')[0]
-                     chain_id = parts 
-                     if any(s.chain_id == chain_id for s in self.job_input.sequences):
-                         abs_path = str((colabfold_msa_output_dir / filename).resolve())
-                         protein_id_to_a3m_path[chain_id] = abs_path
-                         found_a3m = True
-                         logger.info(f"Found generated A3M for chain {chain_id}: {abs_path}")
-                     else:
-                          logger.warning(f"Found A3M file {filename} but corresponding chain ID {chain_id} not in original input. Skipping.")
-            
-            if not found_a3m:
-                 logger.error(f"ColabFold/Boltz MSA pipeline ran but no A3M files found in {colabfold_msa_output_dir}")
-                 return None
-                 
-            return {"protein_id_to_a3m_path": protein_id_to_a3m_path}
+        logger.info(f"Successfully generated MSAs using ColabFold for {len(protein_id_to_a3m_path)} chains.")
         
-        except Exception as e:
-             logger.error(f"Error processing ColabFold/Boltz MSA output directory {colabfold_msa_output_dir}: {e}", exc_info=True)
-             return None
+        return {
+            "source": "colabfold",
+            "protein_id_to_a3m_path": protein_id_to_a3m_path,
+            "protein_id_to_pqt_path": protein_id_to_pqt_path
+        }
 
