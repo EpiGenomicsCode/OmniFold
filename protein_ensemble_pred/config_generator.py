@@ -212,6 +212,9 @@ class ConfigGenerator:
                         if unpaired_path and not paired_path:
                             protein_chain_args["pairedMsa"] = ""
                     
+                    # When providing MSAs, we must also explicitly disable templates if we don't have any
+                    protein_chain_args["templates"] = []
+                    
                     protein_chain = ProteinChain(**protein_chain_args)
                     entity_to_add = Protein(protein=protein_chain)
                 elif seq_info.molecule_type == "rna":
