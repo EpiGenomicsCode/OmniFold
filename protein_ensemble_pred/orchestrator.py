@@ -168,7 +168,12 @@ class Orchestrator:
                     # Chai-1 expects simple headers, e.g., >A, >B
                     f.write(f">{seq_info.chain_id}\n")
                     f.write(f"{seq_info.sequence}\n")
+            
+            # Log the content of the generated FASTA
+            with open(chai_fasta_path, "r") as f:
+                fasta_content = f.read()
             logger.info(f"Generated clean FASTA for Chai-1: {chai_fasta_path}")
+            logger.info(f"--- Chai-1 Input FASTA Content ---\n{fasta_content.strip()}\n---------------------------------")
             return str(chai_fasta_path)
         except Exception as e:
             logger.error(f"Failed to generate clean FASTA for Chai-1: {e}", exc_info=True)

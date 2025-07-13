@@ -269,6 +269,7 @@ class ConfigGenerator:
                 f.write(json_string)
             
             logger.info(f"AlphaFold3 JSON config generated at: {json_file_path}")
+            logger.info(f"--- AlphaFold3 Input JSON Content ---\n{json_string}\n------------------------------------")
             return json_file_path
 
         except ValueError as ve: 
