@@ -5,6 +5,7 @@ Usage:  af3_to_boltz_csv.py  --chains A,B   --msa_root /path/msas   --out /path/
 """
 import re, argparse, textwrap, pathlib, random, gzip, sys, os
 import logging
+from pathlib import Path
 
 TAX_RE = re.compile(r"(?:OX|TaxID)=(\d+)")
 LOWER  = str.maketrans('', '', 'abcdefghijklmnopqrstuvwxyz')
@@ -151,56 +152,71 @@ logger = logging.getLogger(__name__)
 def convert_a3m_to_boltz_csv(protein_to_a3m_path: dict, output_csv_dir: str):
     """
     Converts paired and unpaired A3M files to a Boltz-compatible CSV format.
-    This implementation mimics the logic from Boltz's internal MSA processing.
+    This implementation mimics the logic from Boltz's internal MSA processing,
+    using the paired MSA to derive pairing keys.
     """
     os.makedirs(output_csv_dir, exist_ok=True)
     
-    # This function now expects a specific nested dictionary structure
     unpaired_map = protein_to_a3m_path.get("unpaired", {})
     paired_map = protein_to_a3m_path.get("paired", {})
 
-    protein_ids = set(unpaired_map.keys()) | set(paired_map.keys())
+    all_protein_ids = set(unpaired_map.keys()) | set(paired_map.keys())
 
-    for protein_id in protein_ids:
+    # Since all chains in a complex share the same set of paired MSA rows,
+    # we can read one of the paired files to establish the base keys.
+    # We'll read the paired A3M for the first available protein ID.
+    base_paired_seqs = []
+    if paired_map:
+        first_protein_id = next(iter(paired_map))
+        first_paired_path = paired_map[first_protein_id]
+        if os.path.exists(first_paired_path):
+             base_paired_seqs = [seq for _, seq in read_a3m(Path(first_paired_path))]
+
+    # The key for a paired sequence is its row index in the original paired A3M file.
+    paired_keys = list(range(len(base_paired_seqs)))
+
+    for protein_id in all_protein_ids:
         simple_chain_id = protein_id.split('|')[0]
         output_csv_path = os.path.join(output_csv_dir, f"{simple_chain_id}.csv")
         
         try:
-            paired_seqs = []
-            if protein_id in paired_map:
-                with open(paired_map[protein_id], 'r') as f:
-                    # Skip query header and sequence (first two lines)
-                    lines = f.readlines()[2:] 
-                    paired_seqs = [line.strip() for i, line in enumerate(lines) if i % 2 == 1]
+            # Get the sequences for this specific chain from the paired MSA.
+            # The order must be the same as in `base_paired_seqs`.
+            chain_paired_seqs = []
+            if protein_id in paired_map and os.path.exists(paired_map[protein_id]):
+                chain_paired_seqs = [seq for _, seq in read_a3m(Path(paired_map[protein_id]))]
 
-            # Use the index as the key, filtering out empty padding sequences
-            keys = [idx for idx, s in enumerate(paired_seqs) if not all(c == '-' for c in s)]
-            paired_seqs_filtered = [s for s in paired_seqs if not all(c == '-' for c in s)]
+            # Get the unpaired sequences, skipping the query.
+            chain_unpaired_seqs = []
+            if protein_id in unpaired_map and os.path.exists(unpaired_map[protein_id]):
+                # read_a3m yields all sequences; the first is the query in the single.a3m file.
+                chain_unpaired_seqs = [seq for _, seq in read_a3m(Path(unpaired_map[protein_id]))][1:]
 
-            unpaired_seqs = []
-            if protein_id in unpaired_map:
-                 with open(unpaired_map[protein_id], 'r') as f:
-                    # Skip query header and sequence
-                    lines = f.readlines()[2:]
-                    unpaired_seqs = [line.strip() for i, line in enumerate(lines) if i % 2 == 1]
+            # --- Combine MSAs using Boltz logic ---
+            final_keys = []
+            final_seqs = []
             
-            # Combine, ensuring no duplicates and respecting max sequence limits if needed
-            final_seqs = paired_seqs_filtered
-            final_keys = keys
-            
-            seen_seqs = set(final_seqs)
-            for seq in unpaired_seqs:
-                if seq not in seen_seqs:
+            # 1. Add paired sequences with their index as the key
+            seen_seqs = set()
+            for key, seq in zip(paired_keys, chain_paired_seqs):
+                if not all(c == '-' for c in seq): # Filter out padding sequences
+                    final_keys.append(key)
                     final_seqs.append(seq)
+                    seen_seqs.add(seq)
+            
+            # 2. Add unique unpaired sequences with -1 as the key
+            for seq in chain_unpaired_seqs:
+                if seq not in seen_seqs:
                     final_keys.append(-1)
+                    final_seqs.append(seq)
                     seen_seqs.add(seq)
 
+            # 3. Write to CSV
             with open(output_csv_path, 'w') as csv_file:
                 csv_file.write("key,sequence\n")
                 for key, seq in zip(final_keys, final_seqs):
-                    # Remove gaps for the final sequence column
-                    seq_no_gaps = seq.translate(LOWER)
-                    csv_file.write(f'{key},"{seq_no_gaps}"\n')
+                    # Boltz expects the aligned sequence (with gaps) in its CSV.
+                    csv_file.write(f'{key},"{seq}"\n')
 
             logger.info(f"Successfully converted MSAs for {protein_id} to {output_csv_path}")
 
