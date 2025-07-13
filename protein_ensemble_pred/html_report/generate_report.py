@@ -382,8 +382,8 @@ def create_plddt_plot(all_models_data, best_model_names):
             orientation="h",
             yanchor="bottom",
             y=1.02, # Position above the plot area
-            xanchor="right",
-            x=1,
+            xanchor="center",
+            x=0.5,
             bgcolor='rgba(255, 255, 255, 0)',
             bordercolor='#ced4da',
             borderwidth=0
