@@ -131,20 +131,15 @@ class Orchestrator:
         boltz_csv_output_dir.mkdir(exist_ok=True)
         
         # Accommodate both flat and nested dicts
-        a3m_map = {}
-        if "unpaired" in protein_id_to_a3m_path:
-            a3m_map = protein_id_to_a3m_path["unpaired"]
-        else:
-            a3m_map = protein_id_to_a3m_path
-
-        if not a3m_map:
+        if not protein_id_to_a3m_path:
             logger.warning("No A3M files provided for Boltz CSV conversion.")
             return None
 
+        # Pass the *full* mapping (including both 'paired' and 'unpaired' sections when present)
         logger.info(f"Starting A3M to Boltz CSV conversion. Output dir: {boltz_csv_output_dir}")
         try:
             convert_a3m_to_boltz_csv(
-                protein_to_a3m_path=a3m_map,
+                protein_to_a3m_path=protein_id_to_a3m_path,
                 output_csv_dir=str(boltz_csv_output_dir)
             )
             logger.info("A3M to Boltz CSV conversion completed successfully.")
