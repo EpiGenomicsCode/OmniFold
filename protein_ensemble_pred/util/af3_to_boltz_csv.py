@@ -150,41 +150,61 @@ logger = logging.getLogger(__name__)
 
 def convert_a3m_to_boltz_csv(protein_to_a3m_path: dict, output_csv_dir: str):
     """
-    Converts multiple A3M files to a simplified Boltz-compatible CSV format.
-    This version does not perform pairing; it assumes the input A3M is final.
-
-    Args:
-        protein_to_a3m_path: Dictionary mapping protein IDs to their A3M file paths.
-        output_csv_dir: Path to the directory where output CSV files will be saved.
+    Converts paired and unpaired A3M files to a Boltz-compatible CSV format.
+    This implementation mimics the logic from Boltz's internal MSA processing.
     """
     os.makedirs(output_csv_dir, exist_ok=True)
-    for protein_id, a3m_path in protein_to_a3m_path.items():
-        # Ensure we use the simple chain ID for the output filename.
+    
+    # This function now expects a specific nested dictionary structure
+    unpaired_map = protein_to_a3m_path.get("unpaired", {})
+    paired_map = protein_to_a3m_path.get("paired", {})
+
+    protein_ids = set(unpaired_map.keys()) | set(paired_map.keys())
+
+    for protein_id in protein_ids:
         simple_chain_id = protein_id.split('|')[0]
         output_csv_path = os.path.join(output_csv_dir, f"{simple_chain_id}.csv")
         
         try:
+            paired_seqs = []
+            if protein_id in paired_map:
+                with open(paired_map[protein_id], 'r') as f:
+                    # Skip query header and sequence (first two lines)
+                    lines = f.readlines()[2:] 
+                    paired_seqs = [line.strip() for i, line in enumerate(lines) if i % 2 == 1]
+
+            # Use the index as the key, filtering out empty padding sequences
+            keys = [idx for idx, s in enumerate(paired_seqs) if not all(c == '-' for c in s)]
+            paired_seqs_filtered = [s for s in paired_seqs if not all(c == '-' for c in s)]
+
+            unpaired_seqs = []
+            if protein_id in unpaired_map:
+                 with open(unpaired_map[protein_id], 'r') as f:
+                    # Skip query header and sequence
+                    lines = f.readlines()[2:]
+                    unpaired_seqs = [line.strip() for i, line in enumerate(lines) if i % 2 == 1]
+            
+            # Combine, ensuring no duplicates and respecting max sequence limits if needed
+            final_seqs = paired_seqs_filtered
+            final_keys = keys
+            
+            seen_seqs = set(final_seqs)
+            for seq in unpaired_seqs:
+                if seq not in seen_seqs:
+                    final_seqs.append(seq)
+                    final_keys.append(-1)
+                    seen_seqs.add(seq)
+
             with open(output_csv_path, 'w') as csv_file:
-                # Corrected Header for Boltz
-                csv_file.write("sequence,key\n")
-                
-                # In this simplified converter, we don't have pairing info, so we'll use a placeholder key.
-                # Boltz uses the key for pairing, -1 or an empty string is suitable for unpaired.
-                key_for_all = -1
+                csv_file.write("key,sequence\n")
+                for key, seq in zip(final_keys, final_seqs):
+                    # Remove gaps for the final sequence column
+                    seq_no_gaps = seq.translate(LOWER)
+                    csv_file.write(f'{key},"{seq_no_gaps}"\n')
 
-                with open(a3m_path, 'r') as a3m_file:
-                    for i, line in enumerate(a3m_file):
-                        if line.startswith('>') or i == 0: # Skip query and all headers
-                            continue 
-                        
-                        sequence = line.strip().translate(LOWER) # Remove gaps
-                        if sequence:
-                             csv_file.write(f'"{sequence}",{key_for_all}\n')
-
-            logger.info(f"Successfully converted {a3m_path} to {output_csv_path}")
+            logger.info(f"Successfully converted MSAs for {protein_id} to {output_csv_path}")
 
         except Exception as e:
-            logger.error(f"Failed to convert {a3m_path} for protein {protein_id}: {e}", exc_info=True)
-            # Create an empty file to signify failure but allow pipeline to continue
+            logger.error(f"Failed to convert A3Ms for protein {protein_id}: {e}", exc_info=True)
             with open(output_csv_path, 'w') as f:
-                csv_file.write("sequence,key\n") 
+                f.write("key,sequence\n") 
