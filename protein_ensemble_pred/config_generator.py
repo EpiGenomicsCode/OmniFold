@@ -207,21 +207,25 @@ class ConfigGenerator:
                 if seq_info.molecule_type == "protein":
                     protein_chain_args = common_chain_args.copy()
                     
-                    # Handle unpaired and paired MSAs from ColabFold
-                    if isinstance(protein_msa_paths, dict) and protein_msa_paths.get("unpaired") and protein_msa_paths.get("paired"):
-                        unpaired_path = protein_msa_paths["unpaired"].get(chain_id)
-                        paired_path = protein_msa_paths["paired"].get(chain_id)
+                    # Handle the structured dict from ColabFold output
+                    if isinstance(protein_msa_paths, dict) and "unpaired" in protein_msa_paths:
+                        unpaired_path = protein_msa_paths.get("unpaired", {}).get(chain_id)
+                        paired_path = protein_msa_paths.get("paired", {}).get(chain_id)
+
                         if unpaired_path:
                             protein_chain_args["unpairedMsaPath"] = str(Path(unpaired_path).resolve())
                         if paired_path:
                             protein_chain_args["pairedMsaPath"] = str(Path(paired_path).resolve())
-                    
-                    # Handle single MSA path for backward compatibility
-                    elif isinstance(msa_path_for_chain, str): 
-                        protein_chain_args["unpairedMsaPath"] = str(Path(msa_path_for_chain).resolve())
-                        # Per AF3 docs, if providing custom unpaired, paired should be empty but not null.
-                        protein_chain_args["pairedMsa"] = ""
+                        
+                        # If unpaired is present but paired is not, we must set pairedMsa to ""
+                        if unpaired_path and not paired_path:
+                             protein_chain_args["pairedMsa"] = ""
 
+                    # Handle backward compatibility for a flat dict of paths
+                    elif isinstance(msa_path_for_chain, str):
+                        protein_chain_args["unpairedMsaPath"] = str(Path(msa_path_for_chain).resolve())
+                        protein_chain_args["pairedMsa"] = ""
+                    
                     protein_chain = ProteinChain(**protein_chain_args)
                     entity_to_add = Protein(protein=protein_chain)
                 elif seq_info.molecule_type == "rna":
