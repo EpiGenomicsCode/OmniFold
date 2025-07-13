@@ -33,7 +33,8 @@ class JobInput:
     af3_data_json: Optional[str] = None
     original_af3_config_path: Optional[str] = None
     original_boltz_config_path: Optional[str] = None
-    protein_id_to_a3m_path: Dict[str, str] = field(default_factory=dict) 
+    # Can be a dict of {chain_id: path} or {"unpaired": {chain_id: path}, "paired": {chain_id: path}}
+    protein_id_to_a3m_path: Dict[str, Any] = field(default_factory=dict) 
     protein_id_to_pqt_path: Dict[str, str] = field(default_factory=dict)
     boltz_csv_msa_dir: Optional[str] = None
     model_seeds: Optional[List[int]] = None

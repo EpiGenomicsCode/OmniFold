@@ -206,10 +206,22 @@ class ConfigGenerator:
                 entity_to_add = None
                 if seq_info.molecule_type == "protein":
                     protein_chain_args = common_chain_args.copy()
-                    if msa_path_for_chain: 
-                        protein_chain_args["unpairedMsaPath"] = str(Path(msa_path_for_chain).resolve()) 
-                        protein_chain_args["pairedMsa"] = f">query\n{seq_info.sequence}\n"
                     
+                    # Handle unpaired and paired MSAs from ColabFold
+                    if isinstance(protein_msa_paths, dict) and protein_msa_paths.get("unpaired") and protein_msa_paths.get("paired"):
+                        unpaired_path = protein_msa_paths["unpaired"].get(chain_id)
+                        paired_path = protein_msa_paths["paired"].get(chain_id)
+                        if unpaired_path:
+                            protein_chain_args["unpairedMsaPath"] = str(Path(unpaired_path).resolve())
+                        if paired_path:
+                            protein_chain_args["pairedMsaPath"] = str(Path(paired_path).resolve())
+                    
+                    # Handle single MSA path for backward compatibility
+                    elif isinstance(msa_path_for_chain, str): 
+                        protein_chain_args["unpairedMsaPath"] = str(Path(msa_path_for_chain).resolve())
+                        # Per AF3 docs, if providing custom unpaired, paired should be empty but not null.
+                        protein_chain_args["pairedMsa"] = ""
+
                     protein_chain = ProteinChain(**protein_chain_args)
                     entity_to_add = Protein(protein=protein_chain)
                 elif seq_info.molecule_type == "rna":
@@ -299,6 +311,8 @@ class ConfigGenerator:
             "write_full_pde": cli_config.get("boltz_write_full_pde", False)
         }
 
+        # This logic to set n_preds based on AF3 seeds should be more robust
+        # It assumes the default was used for Boltz based on a flag from the CLI parser.
         if cli_config.get("boltz_diffusion_samples_is_default", False) and \
            job_input.num_model_seeds_from_input is not None and \
            job_input.num_model_seeds_from_input > 0:
@@ -310,11 +324,27 @@ class ConfigGenerator:
             logger.info(f"Added constraints to Boltz YAML from job input.")
 
         segments_list = []
-        protein_msa_paths = job_input.protein_id_to_a3m_path
+        protein_msa_paths = job_input.protein_id_to_a3m_path # This will now be a dict of dicts
         input_msa_paths = job_input.input_msa_paths
         processed_ids = set()
-        sequence_to_msa_path_map = {} # To map unique sequences to their first determined MSA path
+        sequence_to_msa_path_map = {}
 
+        # --- New: Prioritize Boltz CSV MSAs if they were generated ---
+        if job_input.boltz_csv_msa_dir and Path(job_input.boltz_csv_msa_dir).is_dir():
+            logger.info(f"Using pre-generated Boltz CSV MSAs from: {job_input.boltz_csv_msa_dir}")
+            job_root_path = config_output_dir.parent
+            for seq_info in job_input.sequences:
+                if seq_info.molecule_type == "protein":
+                    host_csv_path = Path(job_input.boltz_csv_msa_dir) / f"{seq_info.chain_id}.csv"
+                    if host_csv_path.is_file() and host_csv_path.stat().st_size > 10: # Check for non-trivial file
+                        relative_csv_dir = Path(job_input.boltz_csv_msa_dir).relative_to(job_root_path)
+                        container_csv_path = str(Path("/data/job_output") / relative_csv_dir / f"{seq_info.chain_id}.csv")
+                        sequence_to_msa_path_map[seq_info.sequence] = container_csv_path
+                        logger.info(f"Mapped sequence for chain {seq_info.chain_id} to CSV MSA: {container_csv_path}")
+                    else:
+                        logger.warning(f"CSV file for chain {seq_info.chain_id} not found or is empty at {host_csv_path}. Will default to 'empty' MSA for this chain.")
+                        sequence_to_msa_path_map.setdefault(seq_info.sequence, "empty")
+        
         for seq_info in job_input.sequences:
             chain_id = seq_info.chain_id
             if chain_id in processed_ids:
@@ -323,152 +353,33 @@ class ConfigGenerator:
 
             entity = {}
             
-            # Prioritize Boltz CSV MSAs if available
-            if job_input.boltz_csv_msa_dir and Path(job_input.boltz_csv_msa_dir).is_dir() and seq_info.molecule_type == "protein":
-                determined_csv_path_for_sequence = ""
-                # Check if this exact sequence has been seen before and already has a CSV path assigned
-                if seq_info.sequence in sequence_to_msa_path_map:
-                    reused_path = sequence_to_msa_path_map[seq_info.sequence]
-                    # Ensure the reused path is indeed a CSV path, not an old A3M path if logic is mixed.
-                    # This check assumes CSV paths will contain "boltz_csv_msas" and end with ".csv"
-                    if "boltz_csv_msas" in reused_path and reused_path.endswith(".csv"):
-                        determined_csv_path_for_sequence = reused_path
-                        logger.info(f"Reusing Boltz CSV MSA path '{determined_csv_path_for_sequence}' for protein {chain_id} due to identical sequence.")
-                    else:
-                        # This case should be rare if CSVs are always processed first for a sequence
-                        logger.warning(f"Sequence for protein {chain_id} seen before, but mapped path '{reused_path}' is not a CSV path. Will attempt to determine new CSV path for this instance.")
-                
-                if not determined_csv_path_for_sequence: # If not reused, determine path for the first occurrence (or if prior was not CSV)
-                    job_root_path = config_output_dir.parent
-                    try:
-                        # Use the original chain_id for the filename, as af3_to_boltz_csv.py creates them per input chain ID
-                        host_csv_file_path = Path(job_input.boltz_csv_msa_dir) / f"{seq_info.chain_id}.csv"
-                        if host_csv_file_path.is_file():
-                            # Check if the CSV file is empty or just has a header
-                            with open(host_csv_file_path, 'r') as csv_f:
-                                lines = csv_f.readlines()
-                                if len(lines) <= 1: # Only header or empty
-                                    logger.info(f"Boltz CSV file {host_csv_file_path} for chain {chain_id} is empty or has only a header. Setting MSA to 'empty'.")
-                                    determined_csv_path_for_sequence = "empty"
-                                else:
-                                    relative_csv_dir_path = Path(job_input.boltz_csv_msa_dir).relative_to(job_root_path)
-                                    container_csv_path = Path("/data/job_output") / relative_csv_dir_path / f"{seq_info.chain_id}.csv"
-                                    determined_csv_path_for_sequence = str(container_csv_path)
-                            
-                            # Store this path for this sequence, using the specific chain's CSV file initially
-                            # If another chain has the same sequence, it will reuse this determined_csv_path_for_sequence
-                            # This mapping should happen regardless of whether it's "empty" or a path, to ensure consistent reuse for identical sequences.
-                            if seq_info.sequence not in sequence_to_msa_path_map or \
-                               (determined_csv_path_for_sequence == "empty" and sequence_to_msa_path_map.get(seq_info.sequence) != "empty") or \
-                               (determined_csv_path_for_sequence != "empty" and not ("boltz_csv_msas" in sequence_to_msa_path_map.get(seq_info.sequence, "") and sequence_to_msa_path_map.get(seq_info.sequence, "").endswith(".csv"))):
-                                sequence_to_msa_path_map[seq_info.sequence] = determined_csv_path_for_sequence 
-                                if determined_csv_path_for_sequence == "empty":
-                                    logger.info(f"MSA for protein {chain_id} (sequence starting {seq_info.sequence[:10]}...) will be 'empty' due to empty CSV. Storing for sequence reuse.")
-                                else:
-                                    logger.info(f"Using Boltz CSV MSA for protein {chain_id}: {host_csv_file_path} (container: {determined_csv_path_for_sequence}). Storing for sequence reuse.")
-                        else:
-                            logger.warning(f"Boltz CSV MSA directory specified ({job_input.boltz_csv_msa_dir}), but CSV file for chain {chain_id} ({host_csv_file_path}) not found. Falling back to A3M logic for this chain.")
-                    except ValueError as e:
-                        logger.error(f"Error determining relative path for Boltz CSV for chain {chain_id}: {e}. Host path: {job_input.boltz_csv_msa_dir}, Job root: {job_root_path}. Falling back to A3M.")
-                        determined_csv_path_for_sequence = "" # Ensure fallback
-                
-                if determined_csv_path_for_sequence: # If a CSV path was successfully determined (either new or reused)
-                    entity = {
-                        "protein": {
-                            "id": chain_id,
-                            "sequence": seq_info.sequence,
-                            "msa": determined_csv_path_for_sequence
-                        }
+            if seq_info.molecule_type == "protein":
+                # Use the pre-determined path from the CSV logic above if it exists
+                # Otherwise, default to empty. This simplifies logic and avoids re-processing A3Ms if CSVs were intended.
+                msa_path = sequence_to_msa_path_map.get(seq_info.sequence, "empty")
+                if msa_path == "empty":
+                    logger.info(f"Setting MSA to 'empty' for Boltz protein {chain_id} (no valid CSV found).")
+
+                entity = {
+                    "protein": {
+                        "id": chain_id,
+                        "sequence": seq_info.sequence,
+                        "msa": msa_path
                     }
-                    # If it was a new determination for this sequence, it was already stored in the map.
-                    # If it was reused, no need to update the map again with the same value.
-                # If determined_csv_path_for_sequence is empty here, it means CSV path couldn't be used, will fall through to A3M logic.
+                }
+            elif seq_info.molecule_type == "rna":
+                entity = {"id": chain_id, "sequence": seq_info.sequence, "type": "rna"} 
+            elif seq_info.molecule_type == "dna":
+                entity = {"id": chain_id, "sequence": seq_info.sequence, "type": "dna"}
+            elif seq_info.molecule_type == "ligand_smiles":
+                entity = { "ligand": { "id": chain_id, "smiles": seq_info.sequence } }
+            elif seq_info.molecule_type == "ligand_ccd":
+                entity = { "ligand": { "id": chain_id, "ccd": seq_info.sequence } }
+            else:
+                logger.warning(f"Unhandled molecule type '{seq_info.molecule_type}' for '{seq_info.original_name}'. Skipping for Boltz YAML.")
+                continue
 
-            # If Boltz CSV not used or not found for this chain, proceed with existing A3M logic
-            if not entity: # Only if entity was not already created by CSV logic
-                if protein_msa_paths and chain_id in protein_msa_paths:
-                    logger.debug(f"Found A3M (from pipeline) for Boltz chain {chain_id}: {protein_msa_paths[chain_id]}")
-                elif input_msa_paths and chain_id in input_msa_paths:
-                    logger.debug(f"Found A3M (from user input) for Boltz chain {chain_id}: {input_msa_paths[chain_id]}")
-
-                if seq_info.molecule_type == "protein":
-                    determined_msa_path_for_sequence = ""
-
-                    if seq_info.sequence in sequence_to_msa_path_map:
-                        determined_msa_path_for_sequence = sequence_to_msa_path_map[seq_info.sequence]
-                        logger.debug(f"Reusing MSA path '{determined_msa_path_for_sequence}' for identical sequence of protein {chain_id} (original sequence of {seq_info.sequence[:10]}...). This might be a CSV path or an A3M-derived path.")
-                    else:
-                        # This is the first time we see this specific sequence (and no CSV was used for it)
-                        host_a3m_path_for_chain = None
-                        if protein_msa_paths and chain_id in protein_msa_paths:
-                            host_a3m_path_for_chain = protein_msa_paths[chain_id]
-                        elif input_msa_paths and chain_id in input_msa_paths:
-                            host_a3m_path_for_chain = input_msa_paths[chain_id]
-
-                        if host_a3m_path_for_chain:
-                            job_root_path = config_output_dir.parent
-                            try:
-                                relative_a3m_file_path = Path(host_a3m_path_for_chain).relative_to(job_root_path)
-                                container_a3m_path = str(Path("/data/job_output") / relative_a3m_file_path)
-                            except ValueError: # If host_a3m_path_for_chain is not within job_root_path (e.g. user provided absolute path elsewhere)
-                                # In this case, the runner would need to bind this path separately.
-                                # For now, we assume MSAs are within the job_output directory if processed by the pipeline.
-                                # If it's a user-provided path outside, this logic might need adjustment in Runner for binding.
-                                # Sticking to `msa_X.a3m` relative for now if path is outside.
-                                logger.warning(f"Host A3M path {host_a3m_path_for_chain} is outside the job root {job_root_path}. Using filename for container path.")
-                                container_a3m_path = Path("/data/job_output/msas") / Path(host_a3m_path_for_chain).name # Generic fallback
-
-                            if Path(host_a3m_path_for_chain).name == "empty" or \
-                               (Path(host_a3m_path_for_chain).exists() and is_a3m_singleton(str(host_a3m_path_for_chain), seq_info.sequence)):
-                                logger.info(f"A3M for protein {chain_id} ({seq_info.sequence[:10]}...) is a singleton or marked empty. Setting Boltz msa to 'empty'.")
-                                determined_msa_path_for_sequence = "empty"
-                            else:
-                                determined_msa_path_for_sequence = container_a3m_path
-                        elif not job_input.has_msa: 
-                             logger.info(f"No specific A3M path found for protein {chain_id} ({seq_info.sequence[:10]}...) and input has_msa is False. Setting Boltz msa to 'empty'.")
-                             determined_msa_path_for_sequence = "empty"
-                        else: 
-                             # This case might not be hit if CSVs are always generated from AF3 MSAs, 
-                             # or if ColabFold MSAs are always put into protein_id_to_a3m_path
-                             # Fallback: assume it should be empty if no explicit path is found but has_msa is true.
-                             logger.info(f"No specific A3M path for protein {chain_id} ({seq_info.sequence[:10]}...). Setting Boltz msa to 'empty' as a fallback when has_msa=True.")
-                             determined_msa_path_for_sequence = "empty"
-
-                        sequence_to_msa_path_map[seq_info.sequence] = determined_msa_path_for_sequence
-
-                    entity = {
-                        "protein": {
-                            "id": chain_id,
-                            "sequence": seq_info.sequence,
-                            "msa": determined_msa_path_for_sequence
-                        }
-                    }
-                elif seq_info.molecule_type == "rna":
-                    entity = {"id": chain_id, "sequence": seq_info.sequence, "type": "rna"} 
-                elif seq_info.molecule_type == "dna":
-                    entity = {"id": chain_id, "sequence": seq_info.sequence, "type": "dna"}
-                elif seq_info.molecule_type == "ligand_smiles":
-                    entity = {
-                        "ligand": {
-                            "id": chain_id,
-                            "smiles": seq_info.sequence
-                        }
-                    }
-                elif seq_info.molecule_type == "ligand_ccd":
-                    entity = {
-                        "ligand": {
-                            "id": chain_id,
-                            "ccd": seq_info.sequence
-                        }
-                    }
-                elif seq_info.molecule_type == "unknown":
-                    logger.warning(f"Sequence '{seq_info.original_name}' (chain {chain_id}) has unknown type. Skipping for Boltz YAML.")
-                    continue
-                else:
-                    logger.warning(f"Unhandled molecule type '{seq_info.molecule_type}' for '{seq_info.original_name}'. Skipping for Boltz YAML.")
-                    continue
-            
-            if entity: # Ensure entity was actually formed (e.g. not skipped due to unknown type)
+            if entity:
                 segments_list.append(entity)
             processed_ids.add(chain_id)
 

@@ -515,7 +515,9 @@ class MSAManager:
         # We need to map them back to the protein IDs. We can do this by
         # leveraging the PQT manifest, as the base names match.
         a3m_dir = colabfold_output_dir / "a3ms"
-        protein_id_to_a3m_path = {}
+        protein_id_to_unpaired_a3m_path = {}
+        protein_id_to_paired_a3m_path = {}
+
         for header, pqt_path_str in protein_id_to_pqt_path.items():
             # The PQT filename is <HASH>.aligned.pqt. We need to extract the hash.
             pqt_filename = Path(pqt_path_str).name
@@ -525,25 +527,24 @@ class MSAManager:
             pair_a3m = a3m_dir / f"{file_hash}.pair.a3m"
             single_a3m = a3m_dir / f"{file_hash}.single.a3m"
             
-            # Simple choice for now: prefer paired if it exists and has content.
-            chosen_a3m = None
-            if pair_a3m.is_file() and pair_a3m.stat().st_size > 0:
-                chosen_a3m = pair_a3m
-            elif single_a3m.is_file():
-                chosen_a3m = single_a3m
-            
-            if chosen_a3m:
-                protein_id_to_a3m_path[header] = str(chosen_a3m)
+            if pair_a3m.is_file():
+                protein_id_to_paired_a3m_path[header] = str(pair_a3m)
+            if single_a3m.is_file():
+                protein_id_to_unpaired_a3m_path[header] = str(single_a3m)
 
-        if not protein_id_to_a3m_path or not protein_id_to_pqt_path:
+        if not protein_id_to_unpaired_a3m_path or not protein_id_to_pqt_path:
             logger.error("Failed to map any A3M or PQT files from ColabFold output.")
             return None
             
-        logger.info(f"Successfully generated MSAs using ColabFold for {len(protein_id_to_a3m_path)} chains.")
+        logger.info(f"Successfully generated MSAs using ColabFold for {len(protein_id_to_unpaired_a3m_path)} chains.")
         
         return {
             "source": "colabfold",
-            "protein_id_to_a3m_path": protein_id_to_a3m_path,
-            "protein_id_to_pqt_path": protein_id_to_pqt_path
+            "protein_id_to_a3m_path": {
+                "unpaired": protein_id_to_unpaired_a3m_path,
+                "paired": protein_id_to_paired_a3m_path
+            },
+            "protein_id_to_pqt_path": protein_id_to_pqt_path,
+            "chai_fasta_path": str(temp_fasta_path) # Pass along the FASTA path for Chai-1
         }
 
