@@ -304,25 +304,30 @@ def run_and_parse_ipsae(model: Dict[str, Any]) -> Dict[str, Dict]:
 
 # --- Plotting and Main Logic ---
 
-def create_plddt_plot(models_data):
-    """Creates an interactive pLDDT plot using Plotly."""
+def create_plddt_plot(all_models_data, best_model_names):
+    """Creates an interactive pLDDT plot using Plotly, with togglable traces for all models."""
     fig = go.Figure()
-    # Match the model-logo colors from the template
     colors = {"AlphaFold 3": "#0054a6", "Boltz-1": "#f58220", "Chai-1": "#2ca02c"}
 
-    for model in models_data:
+    # Use the chain info from the first "best" model for consistency in annotations
+    first_best_model = next((m for m in all_models_data if m['name'] in best_model_names), None)
+
+    for model in all_models_data:
         plddt_array = model.get('plddt', [])
         model_name = model.get('name', 'Unknown')
         
-        # Determine color based on model name substring
-        line_color = 'black' # Default
+        line_color = 'grey' # Default color for non-best models in legend
         if "Boltz-1" in model_name: line_color = colors["Boltz-1"]
         elif "AlphaFold 3" in model_name: line_color = colors["AlphaFold 3"]
         elif "Chai-1" in model_name: line_color = colors["Chai-1"]
-
+        
+        # Set visibility: True for best models, 'legendonly' for others
+        is_best = model_name in best_model_names
+        
         fig.add_trace(go.Scatter(
             x=list(range(len(plddt_array))), y=plddt_array, name=model_name,
             mode='lines', line=dict(color=line_color, width=2.5),
+            visible=True if is_best else 'legendonly',
             hovertemplate='Residue: %{x}<br>pLDDT: %{y:.2f}<extra></extra>'
         ))
     
@@ -332,9 +337,9 @@ def create_plddt_plot(models_data):
     fig.add_hrect(y0=50, y1=70, line_width=0, fillcolor="#ffecb3", opacity=0.4, layer="below", annotation_text="Low", annotation_position="right")
     fig.add_hrect(y0=0, y1=50, line_width=0, fillcolor="#ffcdd2", opacity=0.4, layer="below", annotation_text="Very Low", annotation_position="right")
 
-    # Add chain separator lines and labels
-    if models_data and 'chain_info' in models_data[0] and models_data[0]['chain_info']:
-        chain_info = models_data[0]['chain_info']
+    # Add chain separator lines and labels based on the first best model
+    if first_best_model and 'chain_info' in first_best_model and first_best_model['chain_info']:
+        chain_info = first_best_model['chain_info']
         chain_names = list(chain_info.keys())
         
         # Calculate chain boundaries
@@ -374,16 +379,16 @@ def create_plddt_plot(models_data):
             zeroline=False
         ),
         legend=dict(
-            orientation="h", # Horizontal legend
-            yanchor="top",
-            y=-0.2, # Position below the x-axis title
-            xanchor="center",
-            x=0.5,
+            orientation="h",
+            yanchor="bottom",
+            y=1.02, # Position above the plot area
+            xanchor="right",
+            x=1,
             bgcolor='rgba(255, 255, 255, 0)',
             bordercolor='#ced4da',
             borderwidth=0
         ),
-        margin=dict(l=60, r=20, t=40, b=80) # Adjust top margin
+        margin=dict(l=60, r=20, t=80, b=80) # Adjust top margin for legend
     )
     return fig.to_html(full_html=False, include_plotlyjs=False)
 
@@ -413,9 +418,12 @@ def run_report_generation(base_output_dir: Path):
 
     # --- Generate PAE Viewers ---
     print("\nGenerating PAE viewers...")
+    all_models_flat = []
     for method in all_predictions:
         for model in all_predictions[method]:
             model['pae_viewer_path'] = generate_pae_viewer(model, pae_viewer_dir)
+            all_models_flat.append(model)
+
 
     best_models = [preds[0] for preds in all_predictions.values() if preds]
     best_models_names = [m['name'] for m in best_models]
@@ -443,7 +451,7 @@ def run_report_generation(base_output_dir: Path):
                 if pair not in interface_data_by_pair: interface_data_by_pair[pair] = {}
                 interface_data_by_pair[pair][model_name] = None
     
-    plddt_plot_html = create_plddt_plot(best_models)
+    plddt_plot_html = create_plddt_plot(all_models_flat, best_models_names)
 
     try:
         plotly_js_path = Path(__file__).parent / "plotly.min.js"
