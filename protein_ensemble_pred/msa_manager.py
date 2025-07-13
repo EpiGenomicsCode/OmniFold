@@ -9,7 +9,7 @@ import sys # Added for sys.executable
 
 from .config_generator import ConfigGenerator
 from .util.definitions import JobInput, SequenceInfo
-from .util.file_converters import af3_json_to_chai_fasta # Import the new function
+from .util.file_converters import af3_json_to_chai_fasta, job_input_to_chai_fasta
 from .util.msa_utils import extract_all_protein_a3ms_from_af3_json # Import the utility
 
 logger = logging.getLogger(__name__)
@@ -539,6 +539,13 @@ class MSAManager:
             
         logger.info(f"Successfully generated MSAs using ColabFold for {len(protein_id_to_unpaired_a3m_path)} chains.")
         
+        # Create the correctly formatted FASTA for Chai-1 using the new utility
+        chai_fasta_path = colabfold_output_dir / f"{self.job_input.name_stem}_chai_input.fasta"
+        if not job_input_to_chai_fasta(self.job_input, chai_fasta_path):
+            logger.error("Failed to generate the correctly formatted FASTA for Chai-1.")
+            # We can still proceed without it if Chai-1 is not being run.
+            chai_fasta_path = None
+        
         final_results = {
             "source": "colabfold",
             "protein_id_to_a3m_path": {
@@ -546,7 +553,7 @@ class MSAManager:
                 "paired": protein_id_to_paired_a3m_path
             },
             "protein_id_to_pqt_path": protein_id_to_pqt_path,
-            "chai_fasta_path": str(temp_fasta_path) # Pass along the FASTA path for Chai-1
+            "chai_fasta_path": str(chai_fasta_path) if chai_fasta_path else None
         }
         logger.info(f"--- MSAManager ColabFold Results ---\n{json.dumps(final_results, indent=2)}\n------------------------------------")
         return final_results

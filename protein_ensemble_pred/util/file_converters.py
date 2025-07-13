@@ -5,6 +5,7 @@ import functools
 from pathlib import Path
 import logging
 from typing import Optional, Tuple, Dict, List, Any, Set
+from .definitions import JobInput
 
 logger = logging.getLogger(__name__)
 
@@ -345,3 +346,30 @@ def af3_json_to_chai_fasta(json_path: str | Path, fasta_path: str | Path) -> Tup
         logger.error(error_msg, exc_info=True)
         result_info["warnings"].append(error_msg)
         return False, result_info 
+
+def job_input_to_chai_fasta(job_input: JobInput, fasta_path: str | Path) -> bool:
+    """
+    Generates a Chai-style FASTA file directly from a JobInput object.
+    This ensures consistent FASTA formatting for Chai-1, regardless of the MSA source.
+    """
+    fasta_path_obj = Path(fasta_path)
+    try:
+        with open(fasta_path_obj, "w") as f:
+            for seq_info in job_input.sequences:
+                # Determine the entity type for the header.
+                # Default to 'protein' if it's a polymer, otherwise use the specific type.
+                entity_type = seq_info.molecule_type
+                if entity_type not in ["ligand", "glycan", "protein", "rna", "dna"]:
+                    # Fallback for unknown polymer types if any, default to protein
+                    entity_type = "protein"
+
+                header = f">{entity_type}|name={seq_info.chain_id}"
+                # The sequence for ligands is their SMILES or CCD code
+                f.write(f"{header}\n")
+                f.write(f"{seq_info.sequence}\n")
+        
+        logger.info(f"Successfully generated Chai-style FASTA from JobInput at: {fasta_path_obj}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to generate Chai-style FASTA from JobInput: {e}", exc_info=True)
+        return False 

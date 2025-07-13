@@ -203,10 +203,11 @@ class ConfigGenerator:
                         unpaired_path = protein_msa_paths.get("unpaired", {}).get(chain_id)
                         paired_path = protein_msa_paths.get("paired", {}).get(chain_id)
 
+                        # Paths in the JSON must be relative to the config file's location
                         if unpaired_path:
-                            protein_chain_args["unpairedMsaPath"] = str(Path(unpaired_path).resolve())
+                            protein_chain_args["unpairedMsaPath"] = os.path.relpath(unpaired_path, config_output_dir)
                         if paired_path:
-                            protein_chain_args["pairedMsaPath"] = str(Path(paired_path).resolve())
+                            protein_chain_args["pairedMsaPath"] = os.path.relpath(paired_path, config_output_dir)
                         
                         if unpaired_path and not paired_path:
                             protein_chain_args["pairedMsa"] = ""

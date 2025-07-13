@@ -77,31 +77,39 @@ class Runner:
         model_command = []
         binds = {}
 
+        # --- Universal Bind Mount ---
+        # All models will now operate within a single, consistent directory structure
+        # inside the container. We bind the entire job output directory to /data/job_output.
+        # All paths within config files should be relative to this root.
+        job_output_root_host_path = Path(model_specific_output_dir_host_path).parent
+        container_job_output_root = "/data/job_output"
+        binds[str(job_output_root_host_path)] = container_job_output_root
+
+        # --- Model-Specific Configs ---
+        # Paths to configs and outputs are now relative to the job root inside the container.
+        container_config_path = str(Path(container_job_output_root) / Path(input_config_file_host_path).relative_to(job_output_root_host_path))
+        container_model_out_dir = str(Path(container_job_output_root) / Path(model_specific_output_dir_host_path).relative_to(job_output_root_host_path))
+
         if model_name == "alphafold3":
             sif_path = self.config.get("alphafold3_sif_path")
             if not sif_path or not os.path.exists(sif_path):
                 return -1, "", "AlphaFold3 SIF path not configured or not found."
 
-            binds = {
-                input_config_file_host_path: "/data/af_input/fold_input.json",
-                model_specific_output_dir_host_path: "/data/af_output",
-                self.config["alphafold3_model_weights_dir"]: "/data/models",
-            }
-            
+            # Add essential AF3-specific binds
+            binds[self.config["alphafold3_model_weights_dir"]] = "/data/models"
             if self.config.get("alphafold3_database_dir"):
                 binds[self.config["alphafold3_database_dir"]] = "/data/public_databases"
 
             model_command = [
-                "--json_path=/data/af_input/fold_input.json",
+                "--json_path=" + container_config_path,
                 "--model_dir=/data/models",
-                "--output_dir=/data/af_output",
+                "--output_dir=" + container_model_out_dir,
                 "--run_data_pipeline=False",
                 "--run_inference=True",
             ]
 
             if self.config.get("alphafold3_database_dir"):
                 model_command.append("--db_dir=/data/public_databases")
-
             if self.config.get("af3_num_recycles") is not None:
                 model_command.extend(["--num_recycles", str(self.config["af3_num_recycles"])])
             if self.config.get("af3_num_diffusion_samples") is not None:
@@ -122,16 +130,6 @@ class Runner:
             sif_path = self.config.get("boltz1_sif_path")
             if not sif_path or not os.path.exists(sif_path):
                 return -1, "", "Boltz-1 SIF path not configured or not found."
-
-            job_output_root_host_path = Path(input_config_file_host_path).parent.parent
-            container_job_output_root = "/data/job_output"
-            
-            container_config_path = str(Path(container_job_output_root) / Path(input_config_file_host_path).relative_to(job_output_root_host_path))
-            container_model_out_dir = str(Path(container_job_output_root) / Path(model_specific_output_dir_host_path).relative_to(job_output_root_host_path))
-
-            binds = {
-                str(job_output_root_host_path): container_job_output_root,
-            }
 
             model_command = [
                 "boltz", "predict",
@@ -161,51 +159,31 @@ class Runner:
             if not sif_path or not os.path.exists(sif_path):
                 return -1, "", "Chai-1 SIF path not configured or not found."
 
-            chai_fasta_host_path = input_config_file_host_path
-            if not os.path.exists(chai_fasta_host_path):
-                return -1, "", f"Chai-1 input FASTA file not found: {chai_fasta_host_path}"
-
-            container_fasta_path = "/data/input.fasta"
-            container_output_dir = "/data/output"
-            container_msa_dir = "/data/msas"
-
-            binds = {
-                chai_fasta_host_path: f"{container_fasta_path}:ro",
-                model_specific_output_dir_host_path: container_output_dir
-            }
-
-            # Bind modified chai1 files for development and testing PAE output.
-            # These paths should be relative to the project root from where the script is run.
+            # The input config is the FASTA file, its container path is already calculated
+            container_fasta_path = container_config_path
+            
+            # Bind modified chai1 files for development
             modified_chai_files = {
                 "protein_ensemble_pred/chai1_modifications/rank.py": "/usr/local/lib/python3.10/dist-packages/chai_lab/ranking/rank.py",
                 "protein_ensemble_pred/chai1_modifications/chai1.py": "/usr/local/lib/python3.10/dist-packages/chai_lab/chai1.py",
             }
             for host_path, container_path in modified_chai_files.items():
-                # Make host path absolute to be safe.
                 abs_host_path = os.path.abspath(host_path)
                 if os.path.exists(abs_host_path):
                     binds[abs_host_path] = f"{container_path}:ro"
-                else:
-                    logger.warning(f"Modified chai file not found, not binding: {abs_host_path}")
-
 
             model_command = [
                 "chai-lab",
                 "fold",
                 container_fasta_path,
-                container_output_dir,
+                container_model_out_dir,
             ]
-
+            
+            # Chai needs to find the PQT MSAs. Their directory is passed via config.
+            # The path inside the container must be relative to the job root.
             chai_pqt_msa_dir_host = self.config.get("current_chai1_msa_pqt_dir")
-            user_msa_dir_host = self.config.get("chai1_msa_directory")
-
             if chai_pqt_msa_dir_host and os.path.isdir(chai_pqt_msa_dir_host):
-                logger.info(f"Chai-1: Using PQT MSA directory (from AF3 MSA): {chai_pqt_msa_dir_host}")
-                binds[chai_pqt_msa_dir_host] = f"{container_msa_dir}:ro"
-                model_command.extend(["--msa-directory", container_msa_dir])
-            elif user_msa_dir_host and os.path.isdir(user_msa_dir_host):
-                logger.info(f"Chai-1: Using user-provided MSA directory: {user_msa_dir_host}")
-                binds[user_msa_dir_host] = f"{container_msa_dir}:ro"
+                container_msa_dir = str(Path(container_job_output_root) / Path(chai_pqt_msa_dir_host).relative_to(job_output_root_host_path))
                 model_command.extend(["--msa-directory", container_msa_dir])
             elif self.config.get("chai1_use_msa_server", True):
                 logger.info("Chai-1: Using MSA server.")
@@ -275,7 +253,7 @@ class Runner:
             full_cmd.append(sif_path)
             full_cmd.extend(model_command)
         
-        else:
+        else: # For exec-based commands like boltz and chai
             full_cmd = ["singularity", "exec"]
             if gpu_id is not None:
                 full_cmd.append("--nv")

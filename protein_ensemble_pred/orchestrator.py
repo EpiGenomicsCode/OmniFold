@@ -153,32 +153,6 @@ class Orchestrator:
             logger.error(f"Error during A3M to Boltz CSV conversion: {e}", exc_info=True)
             return None
 
-    def _generate_clean_fasta_for_chai(self, job_input: JobInput) -> Optional[str]:
-        """
-        Creates a new, clean FASTA file suitable for Chai-1, which requires simple headers.
-        Saves the file in the run's 'configs' directory to avoid conflicts.
-        """
-        # Place the clean FASTA in the 'configs' subdirectory
-        configs_dir = self.output_dir / "configs"
-        configs_dir.mkdir(exist_ok=True)
-        chai_fasta_path = configs_dir / f"{job_input.name_stem}_chai_input.fasta"
-        try:
-            with open(chai_fasta_path, "w") as f:
-                for seq_info in job_input.sequences:
-                    # Chai-1 expects simple headers, e.g., >A, >B
-                    f.write(f">{seq_info.chain_id}\n")
-                    f.write(f"{seq_info.sequence}\n")
-            
-            # Log the content of the generated FASTA
-            with open(chai_fasta_path, "r") as f:
-                fasta_content = f.read()
-            logger.info(f"Generated clean FASTA for Chai-1: {chai_fasta_path}")
-            logger.info(f"--- Chai-1 Input FASTA Content ---\n{fasta_content.strip()}\n---------------------------------")
-            return str(chai_fasta_path)
-        except Exception as e:
-            logger.error(f"Failed to generate clean FASTA for Chai-1: {e}", exc_info=True)
-            return None
-
     def run_pipeline(self, input_file: str) -> bool:
         """
         Run the complete prediction pipeline.
@@ -261,9 +235,9 @@ class Orchestrator:
                 models_to_run_info.append(("boltz1", configs["boltz_config_path"], "boltz_output_dir"))
 
             if self.config.get("chai1_sif_path"):
-                # Always generate a clean FASTA for Chai-1 to ensure compatibility
-                chai_fasta_path_for_runner = self._generate_clean_fasta_for_chai(job_input)
-                if chai_fasta_path_for_runner:
+                # The correct FASTA path is now consistently provided by the MSAManager.
+                chai_fasta_path_for_runner = self.config.get("current_chai1_fasta_path")
+                if chai_fasta_path_for_runner and Path(chai_fasta_path_for_runner).is_file():
                     logger.info(f"Chai-1 will use FASTA: {chai_fasta_path_for_runner}")
                     if job_input.protein_id_to_pqt_path:
                         # Find the directory containing the first PQT file.
@@ -272,7 +246,7 @@ class Orchestrator:
                         logger.info(f"Chai-1 will use PQT MSAs from: {self.config['current_chai1_msa_pqt_dir']}")
                     models_to_run_info.append(("chai1", chai_fasta_path_for_runner, "chai1_output_dir"))
                 else:
-                    logger.warning("Failed to generate a clean FASTA file for Chai-1. Skipping execution.")
+                    logger.warning("Chai-1 SIF is provided, but no suitable Chai-1 FASTA input was found/generated. Skipping Chai-1 execution.")
             
             if not models_to_run_info:
                 logger.info("No models to run after configuration generation and checks.")
