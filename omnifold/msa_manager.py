@@ -196,7 +196,7 @@ class MSAManager:
         cmd = ["singularity", "run", "--nv"] 
 
         # 1. pipeline.py
-        custom_pipeline_py_host_path_str = "protein_ensemble_pred/singularity_af3/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/pipeline.py"
+        custom_pipeline_py_host_path_str = "omnifold/singularity_af3/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/pipeline.py"
         custom_pipeline_py_host_path = Path(custom_pipeline_py_host_path_str)
         container_pipeline_py_path = "/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/pipeline.py"
         if custom_pipeline_py_host_path.is_file():
@@ -206,7 +206,7 @@ class MSAManager:
             logger.warning(f"Custom pipeline.py not found at {custom_pipeline_py_host_path.resolve()}. Using SIF default.")
 
         # 2. run_alphafold.py
-        custom_run_alphafold_py_host_path_str = "protein_ensemble_pred/singularity_af3/alphafold3/run_alphafold.py"
+        custom_run_alphafold_py_host_path_str = "omnifold/singularity_af3/alphafold3/run_alphafold.py"
         custom_run_alphafold_py_host_path = Path(custom_run_alphafold_py_host_path_str)
         container_run_alphafold_py_path = "/alphafold3/run_alphafold.py"
         if custom_run_alphafold_py_host_path.is_file():
@@ -480,7 +480,7 @@ class MSAManager:
         # that is running the main application.
         cmd = [
             sys.executable,
-            "-m", "protein_ensemble_pred.util.generate_colabfold_msas",
+            "-m", "omnifold.util.generate_colabfold_msas",
             str(temp_fasta_path),
             "--out_dir", str(colabfold_output_dir),
             "--write_a3m" # Always write A3M for Boltz/AF3 consumption

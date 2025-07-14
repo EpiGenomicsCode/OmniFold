@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 # Use the local copy of the ColabFold helper to avoid depending on the external chai_lab package.
-from protein_ensemble_pred.util.colabfold import generate_colabfold_msas  # type: ignore
+from .colabfold import generate_colabfold_msas  # type: ignore
 
 # -----------------------------------------------------------------------------
 # FASTA parsing helpers – minimal implementation to avoid heavy dependencies.
