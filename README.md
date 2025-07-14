@@ -59,7 +59,7 @@ The following paths must be provided as command-line arguments if the respective
     ```bash
     python3 -m venv .venv
     source .venv/bin/activate
-    pip install -r requirements.txt
+    pip install .
     ```
 3.  **Install PAE Viewer Dependencies:** To enable the automatic generation of the interactive PAE viewers, you must also install the Node.js dependencies. This is a one-time setup:
     ```bash
