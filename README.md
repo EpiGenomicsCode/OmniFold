@@ -145,10 +145,10 @@ To enable full interface analysis, this tool uses modified Chai-1 scripts (locat
 
 1.  **Unified Input Handling:** Parses your single input file (FASTA, AF3 JSON, or Boltz YAML) and standardizes the sequence and chain information internally.
 2.  **MSA Management:** Determines if MSAs are needed based on your input and `--msa_method` flag.
-    *   If `msa_method` is `alphafold3` (default), it runs the AlphaFold3 data pipeline using its Singularity container. This tool utilizes modified versions of AlphaFold3's internal `pipeline.py` and `run_alphafold.py` scripts (bound from `protein_ensemble_pred/singularity_af3/...` into the container at runtime) to ensure comprehensive A3M file generation (e.g., UniRef90, MGnify, etc.) for each chain within the standard AlphaFold3 output structure. Caching is restructured to allow for this change. 
+    *   If `msa_method` is `alphafold3` (default), it runs the AlphaFold3 data pipeline using its Singularity container. This tool utilizes modified versions of AlphaFold3's internal `pipeline.py` and `run_alphafold.py` scripts (bound from `protein_ensemble_pred/singularity_af3/...` into the container at runtime) to ensure comprehensive A3M file generation (e.g., UniRef90, MGnify, etc.) for each chain within the standard AlphaFold3 output structure. Caching is restructured to allow for this change.
         *   The resulting AlphaFold3 `_data.json` is parsed to extract per-protein A3M files from the generated MSAs, which are then made available for Boltz.
         *   If Chai-1 is to be run, the A3M files from the AlphaFold3 output (`msas/chain_X/*.a3m`) are converted into Chai-1's PQT format (`msas_forChai/*.pqt`).
-    *   If `msa_method` is `colabfold`, it invokes the Boltz Singularity container with flags to use its MSA server functionality (which typically calls a ColabFold API) to retrieve MSAs, again making them available for Boltz.
+    *   If `msa_method` is `colabfold`, the tool queries the ColabFold API once to retrieve MSAs. The resulting A3M files are supplied to the AlphaFold3 pipeline, while Boltz and Chai-1 consume the same cached MSAs using their native integrations.
     *   Existing MSAs from the input file can also be used, bypassing generation.
 3.  **Configuration Generation:** Creates the specific input files (AF3 JSON, Boltz YAML, Chai-1 FASTA) required by each model, incorporating the standardized sequence data and consistent MSA information.
 4.  **Orchestration & Execution:**
@@ -157,6 +157,7 @@ To enable full interface analysis, this tool uses modified Chai-1 scripts (locat
     *   Assigns GPUs to the selected models (one per model if available and different models are run, or runs sequentially on a single GPU).
     *   Constructs and executes `singularity run/exec` commands for the selected models, binding necessary directories (input configs, output, model weights, databases, MSAs).
 5.  **Output Collection:** Gathers results and logs from all executed model runs into the specified output directory.
+6.  **Report Generation:** Finally, the tool generates a comprehensive `OmniFold_Report.zip` file containing a detailed HTML report that compares key metrics (`pLDDT`, `ipSAE`, `pDockQ`) and includes interactive, shareable PAE viewers that link the 3D structure to the PAE matrix for in-depth analysis.
 
 ## Acknowledgements
 - AlphaFold by DeepMind Technologies Limited
