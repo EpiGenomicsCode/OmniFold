@@ -8,8 +8,9 @@ This command-line application simplifies running ensemble protein structure pred
 
 *   **Internal Conversion:** Automatically converts your input into the specific formats required by each model.
 *   **Unified MSA Handling:** Manages MSA generation or reuse consistently.
-    *   If the AlphaFold3 MSA pipeline is used, the unpaired and paired A3M files are extracted to form the csv file for Boltz to consume.
+    *   If the AlphaFold3 MSA pipeline (Hmmer) is used, the unpaired and paired A3M files are extracted to form the csv file for Boltz to consume.
     *   Additionally, if Chai-1 is being run, the AlphaFold3 internal a3m states are extracted to suit Chai-1's PQT format.
+    *   When using the `colabfold` MSA method, the API is queried only once. The resulting unpaired and paired MSAs are passed to the AlphaFold3 pipeline, while Boltz and Chai-1 use their native ColabFold integrations with the same cached MSA files.
 *   **Parallel Execution:** Orchestrates predictions with AlphaFold3, Boltz-2, and Chai-1, potentially in parallel on different GPUs.
 *   **Containerized Runs:** Executes models reliably within their Singularity containers.
 *   **Organized Output:** Saves the native outputs from each model into a structured output directory.
@@ -128,13 +129,13 @@ The application will create the specified output directory. Inside this director
 
 ## HTML Report Generation
 
-At the end of a successful pipeline run, the tool automatically generates a comprehensive `Protein_Ensemble_Report.zip` file in your output directory. This ZIP contains:
+At the end of a successful pipeline run, the tool automatically generates a comprehensive `OmniFold_Report.zip` file in your output directory. This ZIP file is shareable and contains:
 1.  `final_report.html`: A detailed comparison of all model predictions.
-2.  `pae_viewers/`: A directory containing standalone, interactive PAE (Predicted Aligned Error) viewers for each model generated.
+2.  `pae_viewers/`: A directory containing standalone HTML files, one for each model's prediction. Each file opens an interactive viewer that couples the 3D structure with its corresponding PAE (Predicted Aligned Error) matrix. Users can select regions on the PAE plot to highlight them on the 3D model and vice-versa.
 
 The report includes:
 -   A summary table of key metrics (pLDDT, pTM, ipTM) for the best model from each method.
--   An interface confidence table with `ipSAE` and `pDockQ` scores for all chain pairs, enabling robust interaction analysis. The `ipSAE` score is calculated based on the method described by Dunbrack et al.
+-   An interface confidence table with `ipSAE` and `pDockQ` scores for all chain pairs. The `ipSAE` score is calculated based on the method described by Dunbrack et al.
 -   An interactive, overlaid pLDDT plot to compare per-residue confidence across models.
 
 ### Chai-1 PAE & ipSAE Support
@@ -161,6 +162,7 @@ To enable full interface analysis, this tool uses modified Chai-1 scripts (locat
 - AlphaFold by DeepMind Technologies Limited
 - Boltz-2 by Passaro, Saro, et al. "Boltz-2: Towards Accurate and Efficient Binding Affinity Prediction" bioRxiv (2025)
 - Chai 1 by Chai Discovery, Inc.
+- The interactive PAE viewer included in the HTML report is adapted from the original [PAE Viewer](https://gitlab.gwdg.de/general-microbiology/pae-viewer) developed by the Department of General Microbiology (Institute of Microbiology and Genetics, Georg August University of Göttingen) under the direction of Jörg Stülke.
 - The research project is generously funded by Cornell University BRC Epigenomics Core Facility (RRID:SCR_021287), Penn State Institute for Computational and Data Sciences (RRID:SCR_025154) , Penn State University Center for Applications of Artificial Intelligence and Machine Learning to Industry Core Facility (AIMI) (RRID:SCR_022867) and supported by a gift to AIMI research from Dell Technologies.
 - Computational support was provided by NSF ACCESS to William KM Lai and Gretta Kellogg through BIO230041
 
