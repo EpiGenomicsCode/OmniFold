@@ -71,7 +71,7 @@
             text-align: center;
         }
         .alphafold-3-logo { background-color: #0054a6; }
-        .boltz-1-logo { background-color: #f58220; }
+        .boltz-2-logo { background-color: #f58220; }
         .chai-1-logo { background-color: #2ca02c; }
 
         .clash-yes, .clash-no, .clash-na {
@@ -409,7 +409,7 @@
                     <tr>
                         <th rowspan="2" class="chain-pair">Chain Pair</th>
                         {% for model_name in best_models_names %}
-                            <th colspan="2">{{ model_name.split(' ')[0] }}</th>
+                            <th colspan="2">{{ model_name.split(' (')[0] }}</th>
                         {% endfor %}
                     </tr>
                     <tr>

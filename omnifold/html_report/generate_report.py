@@ -173,7 +173,7 @@ def parse_all_boltz_outputs(directory: Path) -> List[Dict[str, Any]]:
         plddt, chain_info, res_indices = _get_plddt_and_chains_from_cif(cif_file)
         
         model = {
-            'name': "Boltz-1", 'model_class': 'boltz-1',
+            'name': "Boltz 2", 'model_class': 'boltz-2',
             'ranking_score': conf_data.get('confidence_score'),
             'ptm': conf_data.get('ptm'), 'iptm': conf_data.get('iptm'),
             'plddt': plddt, 'avg_plddt': np.mean(plddt) if plddt else 0,
@@ -307,7 +307,7 @@ def run_and_parse_ipsae(model: Dict[str, Any]) -> Dict[str, Dict]:
 def create_plddt_plot(all_models_data, best_model_names):
     """Creates an interactive pLDDT plot using Plotly, with togglable traces for all models."""
     fig = go.Figure()
-    colors = {"AlphaFold 3": "#0054a6", "Boltz-1": "#f58220", "Chai-1": "#2ca02c"}
+    colors = {"AlphaFold 3": "#0054a6", "Boltz 2": "#f58220", "Chai-1": "#2ca02c"}
 
     # Use the chain info from the first "best" model for consistency in annotations
     first_best_model = next((m for m in all_models_data if m['name'] in best_model_names), None)
@@ -317,7 +317,7 @@ def create_plddt_plot(all_models_data, best_model_names):
         model_name = model.get('name', 'Unknown')
         
         line_color = 'grey' # Default color for non-best models in legend
-        if "Boltz-1" in model_name: line_color = colors["Boltz-1"]
+        if "Boltz 2" in model_name: line_color = colors["Boltz 2"]
         elif "AlphaFold 3" in model_name: line_color = colors["AlphaFold 3"]
         elif "Chai-1" in model_name: line_color = colors["Chai-1"]
         
@@ -413,7 +413,7 @@ def run_report_generation(base_output_dir: Path):
     all_predictions = {
         "AlphaFold 3": parse_all_af3_outputs(af_dir),
         "Chai-1": parse_all_chai_outputs(chai_dir),
-        "Boltz-1": parse_all_boltz_outputs(boltz_dir)
+        "Boltz 2": parse_all_boltz_outputs(boltz_dir)
     }
 
     # --- Generate PAE Viewers ---
