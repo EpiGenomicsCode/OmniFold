@@ -139,13 +139,13 @@ The report includes:
 -   An interactive, overlaid pLDDT plot to compare per-residue confidence across models.
 
 ### Chai-1 PAE & ipSAE Support
-To enable full interface analysis, this tool uses modified Chai-1 scripts (located in `protein_ensemble_pred/chai1_modifications`) that are bound into the container at runtime. This ensures that Chai-1 outputs the PAE matrix required for `ipSAE` and `pDockQ` calculations.
+To enable full interface analysis, this tool uses modified Chai-1 scripts (located in `omnifold/chai1_modifications`) that are bound into the container at runtime. This ensures that Chai-1 outputs the PAE matrix required for `ipSAE` and `pDockQ` calculations.
 
 ## How it Works
 
 1.  **Unified Input Handling:** Parses your single input file (FASTA, AF3 JSON, or Boltz YAML) and standardizes the sequence and chain information internally.
 2.  **MSA Management:** Determines if MSAs are needed based on your input and `--msa_method` flag.
-    *   If `msa_method` is `alphafold3` (default), it runs the AlphaFold3 data pipeline using its Singularity container. This tool utilizes modified versions of AlphaFold3's internal `pipeline.py` and `run_alphafold.py` scripts (bound from `protein_ensemble_pred/singularity_af3/...` into the container at runtime) to ensure comprehensive A3M file generation (e.g., UniRef90, MGnify, etc.) for each chain within the standard AlphaFold3 output structure. Caching is restructured to allow for this change.
+    *   If `msa_method` is `alphafold3` (default), it runs the AlphaFold3 data pipeline using its Singularity container. This tool utilizes modified versions of AlphaFold3's internal `pipeline.py` and `run_alphafold.py` scripts (bound from `omnifold/singularity_af3/...` into the container at runtime) to ensure comprehensive A3M file generation (e.g., UniRef90, MGnify, etc.) for each chain within the standard AlphaFold3 output structure. Caching is restructured to allow for this change.
         *   The resulting AlphaFold3 `_data.json` is parsed to extract per-protein A3M files from the generated MSAs, which are then made available for Boltz.
         *   If Chai-1 is to be run, the A3M files from the AlphaFold3 output (`msas/chain_X/*.a3m`) are converted into Chai-1's PQT format (`msas_forChai/*.pqt`).
     *   If `msa_method` is `colabfold`, the tool queries the ColabFold API once to retrieve MSAs. The resulting A3M files are supplied to the AlphaFold3 pipeline, while Boltz and Chai-1 consume the same cached MSAs using their native integrations.

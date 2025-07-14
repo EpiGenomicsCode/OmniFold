@@ -349,7 +349,7 @@ class Orchestrator:
         summary_path = os.path.join(self.output_dir, "prediction_summary.txt")
         try:
             with open(summary_path, "w") as f:
-                f.write("Protein Ensemble Prediction Summary\n")
+                f.write("OmniFold Prediction Summary\n")
                 f.write("================================\n\n")
                 
                 model_order = ["alphafold3", "boltz1", "chai1"]

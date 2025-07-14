@@ -20,7 +20,7 @@ from tqdm import tqdm
 # ---------------------------------------------------------------------------
 # Local lightweight helpers (FASTA parsing, hashing, etc.) – use these instead
 # of chai-lab.  **Do not attempt to import chai_lab here – it is guaranteed to
-# be unavailable in the Protein-Ensemble environment.**
+# be unavailable in the OmniFold environment.**
 # ---------------------------------------------------------------------------
 
 
