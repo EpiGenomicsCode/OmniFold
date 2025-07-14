@@ -3,23 +3,32 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "protein-ensemble-pred"
-version = "0.1.0"
-description = "HPC Protein Ensemble Prediction CLI. Runs AlphaFold3 and Boltz-1."
+name = "omnifold"
+version = "0.0.1"
+authors = [
+    "EpiGenomicsCode"
+]
+description = "OmniFold: An HPC Protein Ensemble Prediction CLI. Runs AlphaFold3, Boltz-1, and Chai-1."
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT License"}
-
+license = { file = "LICENSE" }
 dependencies = [
     "pyfastx",
     "PyYAML",
     "pydantic",
-    "requests"
+    "requests",
+    "pandas",
+    "pyarrow"
 ]
 
 [project.scripts]
-protein-ensemble-pred = "protein_ensemble_pred.cli:main"
+omnifold = "omnifold.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/EpiGenomicsCode/Protein-Ensemble-Inference" 
-Repository = "https://github.com/EpiGenomicsCode/Protein-Ensemble-Inference" 
+"Homepage" = "https://github.com/EpiGenomicsCode/OmniFold"
+"Repository" = "https://github.com/EpiGenomicsCode/OmniFold"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["omnifold*"]
+exclude = ["tests*"] 

@@ -1,4 +1,4 @@
-# Protein Ensemble Prediction CLI
+# OmniFold
 
 ## Overview
 
@@ -52,8 +52,8 @@ The following paths must be provided as command-line arguments if the respective
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/EpiGenomicsCode/Protein-Ensemble-Inference.git
-    cd Protein-Ensemble-Inference
+    git clone https://github.com/EpiGenomicsCode/OmniFold.git
+    cd OmniFold
     ```
 2.  **Install Python Dependencies:** It is highly recommended to use a virtual environment.
     ```bash
@@ -74,10 +74,10 @@ The following paths must be provided as command-line arguments if the respective
 
 ## Basic Usage
 
-To run a prediction, use the `protein-ensemble-pred` command followed by your desired arguments:
+To run a prediction, use the `omnifold` command followed by your desired arguments:
 
 ```bash
-protein-ensemble-pred \
+omnifold \
     --input_file /path/to/your/input.fasta \
     --output_dir /path/to/your/output_directory \
     --alphafold3_sif_path /path/to/alphafold3.sif \
@@ -97,7 +97,7 @@ protein-ensemble-pred \
 The following command runs a prediction for `tests/files/multi_chain_1.fasta`, attempting to run all three models (AlphaFold3, Boltz-1, Chai-1), saving results to `results/multi_chain_1_output`, and specifies paths for Singularity images, model weights, and databases. It uses the `alphafold3` method for MSA generation and sets the log level to `INFO`.
 
 ```bash
-protein-ensemble-pred --input_file tests/files/multi_chain_1.fasta \
+omnifold --input_file tests/files/multi_chain_1.fasta \
     --output_dir results/multi_chain_1_output \
     --alphafold3_sif_path /../containers/alphafold3_x86.sif \
     --boltz1_sif_path /../containers/boltz_x86.sif \
@@ -112,7 +112,7 @@ protein-ensemble-pred --input_file tests/files/multi_chain_1.fasta \
 Refer to the command-line help for a full list of options and their descriptions:
 
 ```bash
-protein-ensemble-pred --help
+omnifold --help
 ```
 
 For detailed information on FASTA input formatting, see [docs/fasta.md](docs/fasta.md).

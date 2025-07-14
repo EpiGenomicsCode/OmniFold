@@ -35,12 +35,12 @@ def setup_logging(log_level_str: str):
 
 def main():
     """
-    HPC Protein Ensemble Prediction CLI.
-    Runs protein structure prediction using an ensemble of models (AlphaFold3 and Boltz).
+    OmniFold: An HPC Protein Ensemble Prediction CLI.
+    Runs protein structure prediction using an ensemble of models (AlphaFold3, Boltz, and Chai-1).
     """
     parser = argparse.ArgumentParser(
-        description="HPC Protein Ensemble Prediction CLI. \n"
-                    "Runs protein structure prediction using an ensemble of models (AlphaFold3 and Boltz).",
+        description="OmniFold: An HPC Protein Ensemble Prediction CLI that runs protein structure prediction "
+                    "using an ensemble of models (AlphaFold3, Boltz, and Chai-1).",
         formatter_class=argparse.RawTextHelpFormatter
     )
 
