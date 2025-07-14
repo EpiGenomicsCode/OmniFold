@@ -14,7 +14,7 @@ This command-line application simplifies running ensemble protein structure pred
 *   **Parallel Execution:** Orchestrates predictions with AlphaFold3, Boltz-2, and Chai-1, potentially in parallel on different GPUs.
 *   **Containerized Runs:** Executes models reliably within their Singularity containers.
 *   **Organized Output:** Saves the native outputs from each model into a structured output directory.
-*   **Automated Reporting:** Automatically generates a comprehensive, interactive HTML report (`Protein_Ensemble_Report.zip`) comparing all model outputs, including metrics like `ipSAE` and `pDockQ`.
+*   **Automated Reporting:** Automatically generates a comprehensive, interactive HTML report (`OmniFold_Report.zip`) comparing all model outputs, including metrics like `ipSAE` and `pDockQ`.
 
 This eliminates the need for manual format conversions and separate pipeline runs for each model, streamlining your ensemble prediction workflow.
 
