@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "omnifold"
 version = "0.0.1"
 authors = [
-    "EpiGenomicsCode"
+    { name = "EpiGenomicsCode" }
 ]
 description = "OmniFold: An HPC Protein Ensemble Prediction CLI. Runs AlphaFold3, Boltz-1, and Chai-1."
 readme = "README.md"
@@ -14,11 +14,16 @@ requires-python = ">=3.11"
 license = { file = "LICENSE" }
 dependencies = [
     "pyfastx",
-    "PyYAML",
+    "PyYAML", 
     "pydantic",
     "requests",
     "pandas",
-    "pyarrow"
+    "pyarrow",
+    "numpy",
+    "biopython",
+    "plotly",
+    "jinja2",
+    "tqdm"
 ]
 
 [project.scripts]
