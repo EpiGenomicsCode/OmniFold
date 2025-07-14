@@ -475,7 +475,7 @@ def run_report_generation(base_output_dir: Path):
     report_path.write_text(html_content, encoding="utf-8")
     print(f"\n✅ Report successfully generated at: {report_path}")
 
-    zip_path = base_output_dir / "Protein_Ensemble_Report.zip"
+    zip_path = base_output_dir / "OmniFold_Report.zip"
     print(f"Creating distributable ZIP file at: {zip_path}")
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
         zipf.write(report_path, report_path.name)
