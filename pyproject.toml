@@ -8,7 +8,7 @@ version = "0.0.1"
 authors = [
     { name = "EpiGenomicsCode" }
 ]
-description = "OmniFold: An HPC Protein Ensemble Prediction CLI. Runs AlphaFold3, Boltz-1, and Chai-1."
+description = "OmniFold: An HPC Protein Ensemble Prediction CLI. Runs AlphaFold3, Boltz, and Chai-1."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
