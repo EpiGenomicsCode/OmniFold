@@ -57,3 +57,7 @@ final_report.html
 Protein_Ensemble_Report.zip
 report.html
 pae-viewer/*_report_*.html 
+
+# Allow specific files needed for Singularity binds
+!omnifold/singularity_af3/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/pipeline.py
+!omnifold/singularity_af3/alphafold3/run_alphafold.py 
