@@ -64,7 +64,7 @@ The following paths must be provided as command-line arguments if the respective
     ```
 3.  **Install PAE Viewer Dependencies:** To enable the automatic generation of the interactive PAE viewers, you must also install the Node.js dependencies. This is a one-time setup:
     ```bash
-    cd protein_ensemble_pred/html_report/pae-viewer
+    cd omnifold/html_report/pae-viewer
     npm install
     cd ../../..  # Return to the project root directory
     ```
