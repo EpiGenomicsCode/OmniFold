@@ -280,6 +280,20 @@ class Runner:
                 check=False,
                 env=env
             )
+
+            # --- Persist model stdout/stderr to separate log files ---
+            try:
+                log_file_path = job_output_root_host_path / f"{model_name}_run.log"
+                with open(log_file_path, "w") as lf:
+                    lf.write(f"Command executed:\n{' '.join(full_cmd)}\n\n")
+                    lf.write("==== STDOUT ====\n")
+                    lf.write(process.stdout or "<empty>\n")
+                    lf.write("\n==== STDERR ====\n")
+                    lf.write(process.stderr or "<empty>\n")
+                logger.info(f"Saved {model_name} container log to {log_file_path}")
+            except Exception as e_log:
+                logger.warning(f"Could not write container log for {model_name}: {e_log}")
+
             logger.info(f"{model_name} execution finished with exit code: {process.returncode}")
             if process.stdout:
                 logger.debug(f"{model_name} stdout:\n{process.stdout}")
