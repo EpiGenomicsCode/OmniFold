@@ -323,7 +323,7 @@ class ConfigGenerator:
         protein_msa_paths = job_input.protein_id_to_a3m_path # This will now be a dict of dicts
         input_msa_paths = job_input.input_msa_paths
         processed_ids = set()
-        sequence_to_msa_path_map = {}
+        chain_id_to_msa_path_map = {}
 
         # --- New: Prioritize Boltz CSV MSAs if they were generated ---
         if job_input.boltz_csv_msa_dir and Path(job_input.boltz_csv_msa_dir).is_dir():
@@ -335,11 +335,11 @@ class ConfigGenerator:
                     if host_csv_path.is_file() and host_csv_path.stat().st_size > 10: # Check for non-trivial file
                         relative_csv_dir = Path(job_input.boltz_csv_msa_dir).relative_to(job_root_path)
                         container_csv_path = str(Path("/data/job_output") / relative_csv_dir / f"{seq_info.chain_id}.csv")
-                        sequence_to_msa_path_map[seq_info.sequence] = container_csv_path
+                        chain_id_to_msa_path_map[seq_info.chain_id] = container_csv_path
                         logger.info(f"Mapped sequence for chain {seq_info.chain_id} to CSV MSA: {container_csv_path}")
                     else:
                         logger.warning(f"CSV file for chain {seq_info.chain_id} not found or is empty at {host_csv_path}. Will default to 'empty' MSA for this chain.")
-                        sequence_to_msa_path_map.setdefault(seq_info.sequence, "empty")
+                        chain_id_to_msa_path_map.setdefault(seq_info.chain_id, "empty")
         
         for seq_info in job_input.sequences:
             chain_id = seq_info.chain_id
@@ -352,7 +352,7 @@ class ConfigGenerator:
             if seq_info.molecule_type == "protein":
                 # Use the pre-determined path from the CSV logic above if it exists
                 # Otherwise, default to empty. This simplifies logic and avoids re-processing A3Ms if CSVs were intended.
-                msa_path = sequence_to_msa_path_map.get(seq_info.sequence, "empty")
+                msa_path = chain_id_to_msa_path_map.get(seq_info.chain_id, "empty")
                 if msa_path == "empty":
                     logger.info(f"Setting MSA to 'empty' for Boltz protein {chain_id} (no valid CSV found).")
 

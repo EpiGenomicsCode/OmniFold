@@ -7,6 +7,8 @@ import re, argparse, textwrap, pathlib, random, gzip, sys, os
 import logging
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 TAX_RE = re.compile(r"(?:OX|TaxID)=(\d+)")
 LOWER  = str.maketrans('', '', 'abcdefghijklmnopqrstuvwxyz')
 
@@ -147,7 +149,7 @@ if __name__ == "__main__":
 
     main(p.parse_args()) 
 
-logger = logging.getLogger(__name__)
+
 
 def convert_a3m_to_boltz_csv(protein_to_a3m_path: dict, output_csv_dir: str):
     """
