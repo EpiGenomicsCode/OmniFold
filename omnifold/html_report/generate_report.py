@@ -205,6 +205,7 @@ def generate_pae_viewer(model: Dict[str, Any], pae_output_dir: Path) -> str:
     # Extract labels from the model's chain info, which is derived from the output CIF.
     if 'chain_info' in model and model['chain_info']:
         labels = ";".join(model['chain_info'].keys())
+        print(f"[DEBUG] {model['name']} chain labels resolved to: {labels}")
     else:
         print(f"Warning: No chain_info found for model {model['name']}. Cannot generate PAE viewer.")
         return "#"
@@ -230,6 +231,7 @@ def generate_pae_viewer(model: Dict[str, Any], pae_output_dir: Path) -> str:
         return "#"
 
     try:
+        print(f"[DEBUG] Running PAE viewer export command: {' '.join(cmd)}")
         # Run from the viewer script's directory to resolve its internal relative paths
         result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=viewer_script_dir)
         

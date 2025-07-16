@@ -387,6 +387,7 @@ def create_standalone_html(
     bundled_js_app = bundle_js_app(project_root, js_app_entrypoint)
 
     # 4. Embed data
+    print(f"[DEBUG] Final chain labels used in session_data: {session_data.get('chainLabels')}")
     session_json = json.dumps(session_data, indent=4)
     session_script = f'<script type="application/json" id="session-data">\n{session_json}\n</script>'
 
