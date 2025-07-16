@@ -528,6 +528,18 @@ def main():
         )
         output_handle = args.output
 
+    # ------------------------------------------------------------------
+    # Optional override of chain labels
+    # If the user supplied --labels we should respect it for ALL workflows,
+    # even when using the specialized Chai / Boltz helpers which otherwise
+    # infer labels alphabetically from the structure. This allows callers
+    # (like OmniFold) to define an explicit ordering that matches the PAE
+    # matrix.
+    # ------------------------------------------------------------------
+    if args.labels:
+        print(f"Overriding chain labels via --labels: {args.labels}")
+        session_data["chainLabels"] = args.labels
+
     output_path = create_standalone_html(project_root, session_data, output_handle)
 
     if args.open:
