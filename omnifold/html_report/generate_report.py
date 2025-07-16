@@ -217,8 +217,8 @@ def generate_pae_viewer(model: Dict[str, Any], pae_output_dir: Path) -> str:
     elif model_class == 'chai-1':
         model_index = re.search(r'model (\d+)', model['name']).group(1)
         chai_dir = model['cif_path'].parent
-        # Pass labels to ensure correct chain ordering
-        cmd.extend(["--chai-input-dir", str(chai_dir), "--model-index", model_index, "--labels", labels])
+        # Do NOT pass explicit labels – let export_report.py derive order from CIF.
+        cmd.extend(["--chai-input-dir", str(chai_dir), "--model-index", model_index])
         
     elif model_class == 'boltz-2': # Corrected from boltz-1
         # The export script expects the predictions directory (one level above the model subfolder)
