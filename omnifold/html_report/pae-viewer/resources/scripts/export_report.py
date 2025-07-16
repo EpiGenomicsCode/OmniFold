@@ -171,20 +171,30 @@ def convert_cif_to_pdb_string(cif_path: Path) -> str:
 
 def get_chains_from_cif(cif_path: Path) -> list[str]:
     """
-    Parses a CIF file to get a sorted list of unique chain IDs using Biopython.
-    This includes robust error handling.
+    Return the chain IDs **in the order they appear** in the first model of the mmCIF.
+
+    We do *not* sort the chains alphabetically – the viewer expects the label list
+    to correspond position-wise to the order in which chains are encountered by
+    NGL when it parses the structure.  Keeping the original order avoids label →
+    sequence mismatches.
     """
     parser = MMCIFParser(QUIET=True)
     try:
         structure = parser.get_structure("structure", str(cif_path))
-        chains = {chain.id for chain in structure.get_chains()}
-        if not chains:
-            raise ValueError("Biopython parsing returned no chains for this structure.")
-        return sorted(list(chains))
+        seen = set()
+        ordered_chains: list[str] = []
+        for chain in structure.get_chains():
+            if chain.id not in seen:
+                ordered_chains.append(chain.id)
+                seen.add(chain.id)
+
+        if not ordered_chains:
+            raise ValueError("No chains parsed from CIF.")
+
+        return ordered_chains
     except Exception as e:
         print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         print(f"FATAL ERROR: Biopython failed to parse chain IDs from the CIF file: {cif_path}")
-        print("This is likely due to an issue with the file format or Biopython's parser.")
         print(f"Encountered error: {e}")
         print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         raise
