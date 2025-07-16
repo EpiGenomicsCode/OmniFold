@@ -234,6 +234,9 @@ def generate_pae_viewer(model: Dict[str, Any], pae_output_dir: Path) -> str:
         print(f"[DEBUG] Running PAE viewer export command: {' '.join(cmd)}")
         # Run from the viewer script's directory to resolve its internal relative paths
         result = subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=viewer_script_dir)
+        print(result.stdout)
+        if result.stderr:
+            print('[STDERR]', result.stderr)
         
         # Find the output file path from the script's stdout
         match = re.search(r"Successfully created standalone report: (.*\.html)", result.stdout)
