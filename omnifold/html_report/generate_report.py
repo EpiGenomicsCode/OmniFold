@@ -202,21 +202,29 @@ def generate_pae_viewer(model: Dict[str, Any], pae_output_dir: Path) -> str:
     
     cmd = ["python3", str(export_script_path), "--output", output_name]
     
-    if model_class == 'alphafold-3':
-        if 'cif_path' not in model or 'pae_path' not in model or 'chain_info' not in model: return "#"
+    # Extract labels from the model's chain info, which is derived from the output CIF.
+    if 'chain_info' in model and model['chain_info']:
         labels = ";".join(model['chain_info'].keys())
+    else:
+        print(f"Warning: No chain_info found for model {model['name']}. Cannot generate PAE viewer.")
+        return "#"
+
+    if model_class == 'alphafold-3':
+        if 'cif_path' not in model or 'pae_path' not in model: return "#"
         cmd.extend(["--structure", str(model['cif_path']), "--scores", str(model['pae_path']), "--labels", labels])
     
     elif model_class == 'chai-1':
         model_index = re.search(r'model (\d+)', model['name']).group(1)
         chai_dir = model['cif_path'].parent
-        cmd.extend(["--chai-input-dir", str(chai_dir), "--model-index", model_index])
+        # Pass labels to ensure correct chain ordering
+        cmd.extend(["--chai-input-dir", str(chai_dir), "--model-index", model_index, "--labels", labels])
         
-    elif model_class == 'boltz-1':
+    elif model_class == 'boltz-2': # Corrected from boltz-1
         # The export script expects the predictions directory (one level above the model subfolder)
         pred_dir = model['cif_path'].parent.parent
         boltz_model_name = model['cif_path'].stem.replace('_model_0', '')
-        cmd.extend(["--boltz-input-dir", str(pred_dir), "--boltz-model-name", boltz_model_name])
+        # Pass labels to ensure correct chain ordering
+        cmd.extend(["--boltz-input-dir", str(pred_dir), "--boltz-model-name", boltz_model_name, "--labels", labels])
         
     else:
         return "#"

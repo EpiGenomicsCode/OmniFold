@@ -283,7 +283,10 @@ class Runner:
 
             # --- Persist model stdout/stderr to separate log files ---
             try:
-                log_file_path = job_output_root_host_path / f"{model_name}_run.log"
+                log_filename = f"{model_name}_run.log"
+                if model_name == "boltz1":
+                    log_filename = "boltz-2.log"
+                log_file_path = job_output_root_host_path / log_filename
                 with open(log_file_path, "w") as lf:
                     lf.write(f"Command executed:\n{' '.join(full_cmd)}\n\n")
                     lf.write("==== STDOUT ====\n")
