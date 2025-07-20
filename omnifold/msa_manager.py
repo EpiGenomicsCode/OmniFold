@@ -63,7 +63,8 @@ class MSAManager:
                 check=False, 
                 cwd=cwd
             )
-            logger.debug(f"Command stdout: {process.stdout}")
+            if process.stdout:
+                logger.info(f"Command stdout:\n{process.stdout.strip()}")
 
             # Always log stderr, as many tools (like our MSA script) write
             # informational logs here. Use INFO level if the command succeeds,
