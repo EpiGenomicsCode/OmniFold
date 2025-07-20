@@ -6,11 +6,15 @@ import tempfile # For temporary FASTA
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, List
 import sys # Added for sys.executable
+import pickle
+import hashlib
 
 from .config_generator import ConfigGenerator
 from .util.definitions import JobInput, SequenceInfo
 from .util.file_converters import af3_json_to_chai_fasta, job_input_to_chai_fasta
 from .util.msa_utils import extract_all_protein_a3ms_from_af3_json # Import the utility
+from .util.template_export import TemplateExport
+
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +79,109 @@ class MSAManager:
         except Exception as e:
              logger.error(f"Error running command {' '.join(cmd)}: {e}", exc_info=True)
              return -1, "", str(e)
+
+    def _process_template_metadata(self, af3_msa_output_actual_dir: Path) -> Optional[str]:
+        """
+        Processes intermediate template metadata JSONs to create the final
+        template store for Chai-1 and Boltz-2.
+        """
+        logger.info("Starting template processing for Chai-1 and Boltz-2.")
+        template_store_dir = self.output_dir / "templates"
+        template_store_dir.mkdir(parents=True, exist_ok=True)
+        pdb_dir = template_store_dir / "pdb"
+        pdb_dir.mkdir(parents=True, exist_ok=True)
+
+        m8_path = template_store_dir / "hits.m8"
+        mapping_pkl_path = template_store_dir / "mapping.pkl"
+        
+        all_exports: List[TemplateExport] = []
+        processed_cifs = set()
+        seen_m8_hits = set()
+        
+        # This function is now defined inside where it's used to have access to scope
+        def sha1(seq: str) -> str:
+            return hashlib.sha1(seq.encode()).hexdigest()
+
+        try:
+            with open(m8_path, "a") as m8_fh:
+                # Find all intermediate template metadata files
+                metadata_files = list(af3_msa_output_actual_dir.glob("msas/chain_*/S*_template_metadata.json"))
+                if not metadata_files:
+                    logger.info("No intermediate template metadata JSONs found. Skipping template processing.")
+                    return None
+                
+                logger.info(f"Found {len(metadata_files)} template metadata files to process.")
+
+                for metadata_file in metadata_files:
+                    with open(metadata_file, 'r') as f:
+                        template_data_list = json.load(f)
+                    
+                    for template_data in template_data_list:
+                        pdb_id = template_data['pdb_id']
+                        cif_name = f"{pdb_id}.cif"
+                        cif_path = pdb_dir / cif_name
+
+                        if cif_name not in processed_cifs:
+                            cif_path.write_text(template_data['mmcif_string'])
+                            processed_cifs.add(cif_name)
+
+                        # Create TemplateExport for Boltz-2
+                        export = TemplateExport(
+                            pdb_id=pdb_id,
+                            chain_id=template_data['chain_id'],
+                            cif_path=cif_path.resolve(),
+                            query_idx_to_template_idx=template_data['query_to_template_map'],
+                            e_value=template_data.get('e_value', 999.0),
+                            hit_from_chain=template_data['hit_from_chain']
+                        )
+                        all_exports.append(export)
+
+                        # De-duplicate hits for the m8 file
+                        m8_key = (export.pdb_id, export.chain_id, export.hit_from_chain)
+                        if m8_key in seen_m8_hits:
+                            continue
+                        seen_m8_hits.add(m8_key)
+
+                        # Write line for Chai-1 hits.m8 file
+                        query_sha1 = sha1(template_data['query_sequence'])
+                        subject_id = f"{pdb_id}_{template_data['chain_id']}"
+                        
+                        # Calculate correct 1-based coordinates
+                        q_indices = sorted([int(k) for k in template_data['query_to_template_map'].keys()])
+                        t_indices = sorted([v for k, v in template_data['query_to_template_map'].items()])
+                        
+                        q_start = q_indices[0] + 1 if q_indices else 0
+                        q_end = q_indices[-1] + 1 if q_indices else 0
+                        s_start = t_indices[0] + 1 if t_indices else 0
+                        s_end = t_indices[-1] + 1 if t_indices else 0
+
+                        # Simplified stats
+                        ident, length, mism, gapopen = 0, 0, 0, 0
+                        evalue = template_data.get('e_value', 999.0)
+                        bitscore = 0
+
+                        m8_fh.write(
+                            f"{query_sha1}\t{subject_id}\t"
+                            f"{ident:.1f}\t{length}\t{mism}\t{gapopen}\t"
+                            f"{q_start}\t{q_end}\t{s_start}\t{s_end}\t"
+                            f"{evalue:.3e}\t{bitscore}\n"
+                        )
+                
+            # After processing all files, save the final pickle for Boltz
+            # TODO: Honor user's 'force' flag when building Boltz templates from this pickle.
+            with open(mapping_pkl_path, "wb") as pkl_f:
+                pickle.dump(all_exports, pkl_f)
+            
+            logger.info(f"Successfully created template store at: {template_store_dir}")
+            logger.info(f"  - {len(processed_cifs)} mmCIF files written to {pdb_dir}")
+            logger.info(f"  - {len(all_exports)} hits written to {m8_path} for Chai-1")
+            logger.info(f"  - {len(all_exports)} template export objects pickled to {mapping_pkl_path} for Boltz-2")
+
+            return str(template_store_dir.resolve())
+
+        except Exception as e:
+            logger.error(f"Failed to process template metadata and create template store: {e}", exc_info=True)
+            return None
 
     def generate_msa(self) -> Optional[Dict[str, Any]]:
         """
@@ -215,6 +322,26 @@ class MSAManager:
         else:
             logger.warning(f"Custom run_alphafold.py not found at {custom_run_alphafold_py_host_path.resolve()}. Using SIF default.")
 
+        # 3. templates.py
+        custom_templates_py_host_path_str = "omnifold/singularity_af3/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/templates.py"
+        custom_templates_py_host_path = Path(custom_templates_py_host_path_str)
+        container_templates_py_path = "/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/templates.py"
+        if custom_templates_py_host_path.is_file():
+            cmd.extend(["-B", f"{custom_templates_py_host_path.resolve()}:{container_templates_py_path}:ro"])
+            logger.info(f"Binding custom templates.py: {custom_templates_py_host_path.resolve()} -> {container_templates_py_path}")
+        else:
+            logger.warning(f"Custom templates.py not found at {custom_templates_py_host_path.resolve()}. Using SIF default.")
+
+        # 4. tools/hmmsearch.py
+        custom_hmmsearch_py_host_path_str = "omnifold/singularity_af3/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/tools/hmmsearch.py"
+        custom_hmmsearch_py_host_path = Path(custom_hmmsearch_py_host_path_str)
+        container_hmmsearch_py_path = "/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/tools/hmmsearch.py"
+        if custom_hmmsearch_py_host_path.is_file():
+            cmd.extend(["-B", f"{custom_hmmsearch_py_host_path.resolve()}:{container_hmmsearch_py_path}:ro"])
+            logger.info(f"Binding custom hmmsearch.py: {custom_hmmsearch_py_host_path.resolve()} -> {container_hmmsearch_py_path}")
+        else:
+            logger.warning(f"Custom hmmsearch.py not found at {custom_hmmsearch_py_host_path.resolve()}. Using SIF default.")
+
         cmd.extend(["-B", f"{temp_input_json_path.parent.resolve()}:/app/input:ro"])
         cmd.extend(["-B", f"{af3_data_pipeline_host_output_base.resolve()}:{container_output_dir_in_af3}"])
         db_dir_host = self.config.get("alphafold3_database_dir")
@@ -288,6 +415,15 @@ class MSAManager:
             results = {"af3_data_json": str(output_data_json_path.resolve())}
 
             af3_msa_output_actual_dir = output_data_json_path.parent # e.g. .../msa_intermediate_files/job_name_msa_gen/
+
+            # --- Process Templates for Chai/Boltz ---
+            template_store_path = self._process_template_metadata(af3_msa_output_actual_dir)
+            if template_store_path:
+                results["template_store_path"] = template_store_path
+            else:
+                logger.warning("Template processing failed or produced no output. Chai/Boltz may not use templates.")
+            # --- End Template Processing ---
+
 
             # --- Extract Unpaired MSAs from JSON for af3_to_boltz_csv.py and general use ---
             json_extracted_unpaired_msas_output_dir = af3_msa_output_actual_dir / "json_extracted_unpaired_msas"
