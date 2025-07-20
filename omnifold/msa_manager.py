@@ -105,7 +105,7 @@ class MSAManager:
         try:
             with open(m8_path, "a") as m8_fh:
                 # Find all intermediate template metadata files
-                metadata_files = list(af3_msa_output_actual_dir.glob("msas/chain_*/S*_template_metadata.json"))
+                metadata_files = list(af3_msa_output_actual_dir.glob("msas/chain_*/*_template_metadata.json"))
                 if not metadata_files:
                     logger.info("No intermediate template metadata JSONs found. Skipping template processing.")
                     return None
