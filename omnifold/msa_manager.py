@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional, Tuple, List
 import sys # Added for sys.executable
 import pickle
 import hashlib
+import gzip
 
 from .config_generator import ConfigGenerator
 from .util.definitions import JobInput, SequenceInfo
@@ -119,18 +120,31 @@ class MSAManager:
                     
                     for template_data in template_data_list:
                         pdb_id = template_data['pdb_id']
-                        cif_name = f"{pdb_id}.cif"
-                        cif_path = pdb_dir / cif_name
+                        
+                        # Define paths for both .cif (Boltz) and .cif.gz (Chai)
+                        cif_name_boltz = f"{pdb_id}.cif"
+                        cif_path_boltz = pdb_dir / cif_name_boltz
 
-                        if cif_name not in processed_cifs:
-                            cif_path.write_text(template_data['mmcif_string'])
-                            processed_cifs.add(cif_name)
+                        cif_name_chai = f"{pdb_id}.cif.gz"
+                        cif_path_chai = pdb_dir / cif_name_chai
 
-                        # Create TemplateExport for Boltz-2
+                        if cif_name_boltz not in processed_cifs:
+                            mmcif_content = template_data['mmcif_string']
+                            
+                            # Save .cif for Boltz
+                            cif_path_boltz.write_text(mmcif_content)
+                            
+                            # Save .cif.gz for Chai
+                            with gzip.open(cif_path_chai, 'wt', encoding='utf-8') as f_gz:
+                                f_gz.write(mmcif_content)
+
+                            processed_cifs.add(cif_name_boltz)
+
+                        # Create TemplateExport for Boltz-2, pointing to the .cif file
                         export = TemplateExport(
                             pdb_id=pdb_id,
                             chain_id=template_data['chain_id'],
-                            cif_path=cif_path.resolve(),
+                            cif_path=cif_path_boltz.resolve(),
                             query_idx_to_template_idx=template_data['query_to_template_map'],
                             e_value=template_data.get('e_value', 999.0),
                             hit_from_chain=template_data['hit_from_chain']

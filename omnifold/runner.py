@@ -90,6 +90,8 @@ class Runner:
         # Paths to configs and outputs are now relative to the job root inside the container.
         container_config_path = str(Path(container_job_output_root) / Path(input_config_file_host_path).relative_to(job_output_root_host_path))
         container_model_out_dir = str(Path(container_job_output_root) / Path(model_specific_output_dir_host_path).relative_to(job_output_root_host_path))
+        
+        extra_env: Dict[str, str] = {}
 
         if model_name == "alphafold3":
             sif_path = self.config.get("alphafold3_sif_path")
@@ -236,7 +238,10 @@ class Runner:
             if template_store_host and os.path.isdir(template_store_host):
                 container_template_store = f"{container_job_output_root}/templates"
                 binds[template_store_host] = f"{container_template_store}:ro"
+                
+                # Set the environment variable specifically for Chai-1 to find the CIFs
                 extra_env["CHAI_TEMPLATE_CIF_FOLDER"] = f"{container_template_store}/pdb"
+                
                 container_m8_path = f"{container_template_store}/hits.m8"
                 model_command.extend(["--template-hits-path", container_m8_path])
 
@@ -271,6 +276,11 @@ class Runner:
             full_cmd = ["singularity", "exec"]
             if gpu_id is not None:
                 full_cmd.append("--nv")
+            
+            # Add environment variables for commands that need them (e.g., Chai)
+            for key, value in extra_env.items():
+                full_cmd.extend(["--env", f"{key}={value}"])
+
             for host_path, container_path_spec in binds.items():
                 if os.path.exists(host_path):
                     full_cmd.extend(["--bind", f"{host_path}:{container_path_spec}"])
@@ -282,7 +292,6 @@ class Runner:
         logger.info(f"Final assembled command for {model_name}: {' '.join(full_cmd)}")
 
         env = os.environ.copy()
-        env.update(extra_env)
         if gpu_id is not None:
             env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
             logger.info(f"Setting CUDA_VISIBLE_DEVICES={gpu_id} for {model_name}")
