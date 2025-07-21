@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Literal, Generator, Any, Optional, Dict
+from typing import List, Literal, Generator, Any, Optional, Dict, Tuple
 import string
 
 # Sequence alphabets (from af3/constants.py)
@@ -34,12 +34,13 @@ class JobInput:
     original_af3_config_path: Optional[str] = None
     original_boltz_config_path: Optional[str] = None
     # Can be a dict of {chain_id: path} or {"unpaired": {chain_id: path}, "paired": {chain_id: path}}
-    protein_id_to_a3m_path: Dict[str, Any] = field(default_factory=dict) 
+    protein_id_to_a3m_path: Dict[str, str] = field(default_factory=dict) 
     protein_id_to_pqt_path: Dict[str, str] = field(default_factory=dict)
     boltz_csv_msa_dir: Optional[str] = None
+    template_store_path: Optional[str] = None
     model_seeds: Optional[List[int]] = None
-    num_model_seeds_from_input: Optional[int] = None 
-    bonded_atom_pairs: Optional[List[Dict]] = None 
+    num_model_seeds_from_input: Optional[int] = 1
+    bonded_atom_pairs: Optional[List[Tuple[int, int]]] = None 
     is_boltz_config: bool = False 
     is_af3_msa_config_only: bool = False 
 

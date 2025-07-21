@@ -4,10 +4,12 @@ import random
 import logging
 from typing import List, Optional, Dict, Any
 import yaml
+import pickle
 from pathlib import Path
 
 from .util.definitions import JobInput, SequenceInfo, SequenceType
 from .util.msa_utils import is_a3m_singleton
+from .util.template_export import TemplateExport
 from .af3_models import (
     Af3Input, Protein, ProteinChain, RNA, RNAChain, DNA, DNAChain, Ligand, LigandMolecule,
     MolId, ProtSeq, RNASeq, DNASeq
@@ -276,6 +278,52 @@ class ConfigGenerator:
             logger.error(f"Error generating AlphaFold3 JSON for {job_input.name_stem} at {json_file_path}: {e}", exc_info=True)
             return None
 
+    def _build_boltz_templates_from_store(self, job_input: JobInput, container_job_output_dir: str) -> List[Dict[str, Any]]:
+        """Builds the templates block for Boltz YAML from the generated template store."""
+        if not job_input.template_store_path:
+            return []
+
+        mapping_pkl_path = Path(job_input.template_store_path) / "mapping.pkl"
+        if not mapping_pkl_path.is_file():
+            logger.warning(f"Template mapping file not found at {mapping_pkl_path}. Cannot add templates to Boltz config.")
+            return []
+
+        try:
+            with open(mapping_pkl_path, "rb") as f:
+                template_exports: List[TemplateExport] = pickle.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load template mapping pickle {mapping_pkl_path}: {e}")
+            return []
+            
+        boltz_templates = []
+        # TODO: This is where we should get the user-defined force/threshold values
+        # For now, using defaults.
+        user_force_default = False
+        user_threshold = 2.0
+
+        for tpl in template_exports:
+            # The cif_path in the pickle is absolute on the host. We need to make it relative to the container's mount point.
+            container_cif_path = Path(container_job_output_dir) / Path(tpl.cif_path).relative_to(Path(job_input.output_dir))
+            
+            boltz_templates.append({
+                "cif": str(container_cif_path),
+                "chain_id": tpl.hit_from_chain,
+                "template_id": tpl.chain_id,
+                "force": user_force_default,
+                "threshold": user_threshold,
+            })
+        
+        # Deduplicate the list based on cif, chain_id, and template_id to handle homomers correctly
+        unique_boltz_templates = []
+        seen_templates = set()
+        for tpl in boltz_templates:
+            key = (tpl['cif'], tpl['chain_id'], tpl['template_id'])
+            if key not in seen_templates:
+                unique_boltz_templates.append(tpl)
+                seen_templates.add(key)
+        
+        return unique_boltz_templates
+
     def _generate_boltz_yaml_from_job_input(
         self,
         job_input: JobInput,
@@ -391,6 +439,12 @@ class ConfigGenerator:
 
         boltz_config["sequences"] = segments_list 
         
+        # Add templates if available
+        boltz_templates = self._build_boltz_templates_from_store(job_input, config_output_dir.parent)
+        if boltz_templates:
+            boltz_config["templates"] = boltz_templates
+            logger.info(f"Added {len(boltz_templates)} template entries to Boltz config.")
+
         try:
             with open(yaml_file_path, 'w') as f:
                 yaml.dump(boltz_config, f, sort_keys=False, Dumper=yaml.SafeDumper)

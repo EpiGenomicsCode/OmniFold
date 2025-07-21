@@ -154,6 +154,14 @@ class Runner:
             if self.config.get("boltz_output_format"):
                 model_command.extend(["--output_format", self.config["boltz_output_format"]])
 
+            template_store_host = self.config.get("template_store_path")
+            if template_store_host and os.path.isdir(template_store_host):
+                container_template_store = f"{container_job_output_root}/templates"
+                binds[template_store_host] = f"{container_template_store}:ro"
+                self.env_vars = {"CHAI_TEMPLATE_CIF_FOLDER": f"{container_template_store}/pdb"}
+                container_m8_path = f"{container_template_store}/hits.m8"
+                model_command.extend(["--template-hits-path", container_m8_path])
+
         elif model_name == "chai1":
             sif_path = self.config.get("chai1_sif_path")
             if not sif_path or not os.path.exists(sif_path):
@@ -225,6 +233,14 @@ class Runner:
             
             if chai_device_arg:
                 model_command.extend(["--device", chai_device_arg])
+
+            template_store_host = self.config.get("template_store_path")
+            if template_store_host and os.path.isdir(template_store_host):
+                container_template_store = f"{container_job_output_root}/templates"
+                binds[template_store_host] = f"{container_template_store}:ro"
+                self.env_vars = {"CHAI_TEMPLATE_CIF_FOLDER": f"{container_template_store}/pdb"}
+                container_m8_path = f"{container_template_store}/hits.m8"
+                model_command.extend(["--template-hits-path", container_m8_path])
 
         else:
             return -1, "", f"Unsupported model_name: {model_name}"

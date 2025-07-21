@@ -161,6 +161,10 @@ class MSAManager:
                         evalue = template_data.get('e_value', 999.0)
                         bitscore = 0
 
+                        logger.debug(
+                            f"Writing template to m8: PDB={pdb_id}_{template_data['chain_id']}, "
+                            f"QuerySHA1={query_sha1}, E-value={evalue}"
+                        )
                         m8_fh.write(
                             f"{query_sha1}\t{subject_id}\t"
                             f"{ident:.1f}\t{length}\t{mism}\t{gapopen}\t"
