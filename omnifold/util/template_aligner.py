@@ -8,47 +8,36 @@ from typing import Dict, Tuple
 import gemmi
 from typing import Dict, Tuple
 
+import gemmi
+from typing import Dict, Tuple
+
 def template_seq_and_index(cif_path: str, chain_id: str) -> Tuple[str, Dict[int, int]]:
     """
-    Read _pdbx_poly_seq_scheme (or _entity_poly_seq as fallback) and return:
-        sequence: full SEQRES string for that chain
-        mapping : {query_idx (0-based) -> template_idx (0-based)}
+    Return SEQRES-style sequence for `chain_id` and a mapping
+    query_idx (0-based) → template_idx (0-based, includes unresolved residues).
     """
     doc   = gemmi.cif.read_file(cif_path)
     block = doc.sole_block()
 
-    # 1) Try the authoritative table first
-    loop = block.find_loop('_pdbx_poly_seq_scheme.mon_id')
-    if loop is None:
-        # PDB entries < 2019 use _entity_poly_seq instead
-        loop = block.find_loop('_entity_poly_seq.mon_id')
-    if loop is None:
-        raise ValueError(f"{cif_path} has neither poly_seq_scheme nor entity_poly_seq")
+    # Prefer the modern table; fall back to the legacy one
+    prefix = '_pdbx_poly_seq_scheme.' if block.find_value('_pdbx_poly_seq_scheme.mon_id') \
+             else '_entity_poly_seq.'
+    tbl = gemmi.cif.Table(block, prefix,
+                          ['mon_id', 'auth_asym_id', 'asym_id', 'seq_id'])
 
-    # If we got a Column, grab its parent loop
-    if isinstance(loop, gemmi.cif.Column):
-        loop = loop.loop
+    seq      : str            = ""
+    mapping  : Dict[int, int] = {}
 
-    # Convenience helpers
-    get = loop.get_column
-
-    mon_ids  = get('mon_id')           # 3-letter codes
-    asym_ids = get('auth_asym_id') if loop.find_tag('auth_asym_id') \
-               else get('asym_id')     # fallback
-    seq_ids  = get('seq_id')           # always present
-
-    seq = ""
-    mapping: Dict[int, int] = {}
-
-    for i in range(loop.length()):
-        if asym_ids[i] != chain_id:
+    for row in tbl:
+        asym = row['auth_asym_id'] or row['asym_id']
+        if asym != chain_id:
             continue
-        res1 = gemmi.to_one_letter_code(mon_ids[i]) or 'X'
+        res1 = gemmi.to_one_letter_code(row['mon_id']) or 'X'
         seq += res1
-        mapping[len(seq) - 1] = int(seq_ids[i]) - 1  # 0-based for AF-3
+        mapping[len(seq) - 1] = int(row['seq_id']) - 1   # AF3 expects 0-based
 
     if not seq:
-        raise ValueError(f"Chain {chain_id} not found in {cif_path}")
+        raise ValueError(f"{chain_id} not present in {cif_path}")
 
     return seq, mapping
 
