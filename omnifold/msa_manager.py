@@ -144,7 +144,7 @@ class MSAManager:
                         seen_m8_hits.add(m8_key)
 
                         # Write line for Chai-1 hits.m8 file
-                        query_sha1 = sha1(template_data['query_sequence'])
+                        query_id = export.hit_from_chain
                         subject_id = f"{pdb_id}_{template_data['chain_id']}"
                         
                         # Calculate correct 1-based coordinates
@@ -163,10 +163,10 @@ class MSAManager:
 
                         logger.debug(
                             f"Writing template to m8: PDB={pdb_id}_{template_data['chain_id']}, "
-                            f"QuerySHA1={query_sha1}, E-value={evalue}"
+                            f"QueryID={query_id}, E-value={evalue}"
                         )
                         m8_fh.write(
-                            f"{query_sha1}\t{subject_id}\t"
+                            f"{query_id}\t{subject_id}\t"
                             f"{ident:.1f}\t{length}\t{mism}\t{gapopen}\t"
                             f"{q_start}\t{q_end}\t{s_start}\t{s_end}\t"
                             f"{evalue:.3e}\t{bitscore}\n"
