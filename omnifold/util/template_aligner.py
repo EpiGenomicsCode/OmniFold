@@ -7,20 +7,43 @@ from typing import Dict, Tuple
 
 def template_seq_and_index(cif_path: str, chain_id: str) -> Tuple[str, Dict[int, int]]:
     """
-    Extracts the full template sequence and a mapping from sequence index to residue index from a CIF file.
+    Extracts a template sequence and a 0-based index mapping from a CIF file.
+    
+    Args:
+        cif_path: Path to the mmCIF file.
+        chain_id: The chain ID to extract.
+
+    Returns:
+        A tuple containing:
+        - The full template sequence.
+        - A dictionary mapping 0-based sequence indices to 1-based residue indices (as in CIF).
     """
     st = gemmi.read_structure(cif_path)
-    # Ensure chain_id is valid for this structure
-    if chain_id not in [ch.name for ch in st[0]]:
-        raise ValueError(f"Chain ID '{chain_id}' not found in structure {cif_path}")
-        
-    block = st[0][chain_id]
-    scheme = block.get_poly_seq_scheme()
-    seq = ''.join(r.mon for r in scheme)
+    model_idx = 0  # Assuming first model
     
-    # gemmi uses 1-based seqid, AF3 uses 0-based templateIndices
-    seq_to_idx = {i: scheme[i].seqid.num - 1 for i in range(len(scheme))}
-    return seq, seq_to_idx
+    # Check if the chain exists in the model
+    chain_names = [c.name for c in st[model_idx]]
+    if chain_id not in chain_names:
+        raise ValueError(f"Chain '{chain_id}' not found in model {model_idx} of {cif_path}. Available chains: {', '.join(chain_names)}")
+
+    chain = st[model_idx][chain_id]
+    
+    polymer = chain.get_polymer()
+    if polymer is None:
+        raise ValueError(f"Chain {chain_id} is not a polymer in {cif_path}")
+    
+    scheme = polymer.get_poly_seq_scheme()
+
+    sequence = ""
+    # gemmi uses 1-based seqid for CIFs. We need to map our 0-based sequence index
+    # to the original residue number from the file.
+    seq_to_res_idx = {}
+    for i, r in enumerate(scheme):
+        sequence += r.mon
+        if r.seqid: # Ensure seqid is not None
+            seq_to_res_idx[i] = r.seqid.num - 1 # AF3 templates are 0-indexed
+
+    return sequence, seq_to_res_idx
 
 def kalign_pair(q_seq: str, t_seq: str) -> Tuple[str, str]:
     """
