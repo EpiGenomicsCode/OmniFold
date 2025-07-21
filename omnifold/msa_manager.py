@@ -125,7 +125,8 @@ class MSAManager:
                         cif_name_boltz = f"{pdb_id}.cif"
                         cif_path_boltz = pdb_dir / cif_name_boltz
 
-                        cif_name_chai = f"{pdb_id}.cif.gz"
+                        # Chai expects uppercase PDB IDs in filenames
+                        cif_name_chai = f"{pdb_id.upper()}.cif.gz"
                         cif_path_chai = pdb_dir / cif_name_chai
 
                         if cif_name_boltz not in processed_cifs:
