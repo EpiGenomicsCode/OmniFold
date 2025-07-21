@@ -5,44 +5,53 @@ import tempfile
 from pathlib import Path
 from typing import Dict, Tuple
 
+import gemmi
+from typing import Dict, Tuple
+
 def template_seq_and_index(cif_path: str, chain_id: str) -> Tuple[str, Dict[int, int]]:
     """
-    Extract full SEQRES‑style sequence for `chain_id` from `_pdbx_poly_seq_scheme`
-    and build a dict mapping: query_index (0‑based) → template_index (0‑based).
-    The template_index counts every residue in the scheme, even if unresolved,
-    which is what AlphaFold‑3 expects for `templateIndices`.
+    Read _pdbx_poly_seq_scheme (or _entity_poly_seq as fallback) and return:
+        sequence: full SEQRES string for that chain
+        mapping : {query_idx (0-based) -> template_idx (0-based)}
     """
     doc   = gemmi.cif.read_file(cif_path)
     block = doc.sole_block()
 
+    # 1) Try the authoritative table first
     loop = block.find_loop('_pdbx_poly_seq_scheme.mon_id')
     if loop is None:
-        raise ValueError(f"{cif_path} lacks _pdbx_poly_seq_scheme")
+        # PDB entries < 2019 use _entity_poly_seq instead
+        loop = block.find_loop('_entity_poly_seq.mon_id')
+    if loop is None:
+        raise ValueError(f"{cif_path} has neither poly_seq_scheme nor entity_poly_seq")
 
-    # Column indices (mandatory in PDBx/mmCIF spec)
-    tag = {name: i for i, name in enumerate(loop.tags)}
-    mon_col   = tag['mon_id']
-    seq_col   = tag['seq_id']
-    # Auth chain ID is in auth_asym_id; fall back to asym_id if absent
-    auth_col  = tag.get('auth_asym_id', tag.get('asym_id'))
+    # If we got a Column, grab its parent loop
+    if isinstance(loop, gemmi.cif.Column):
+        loop = loop.loop
 
-    seq: str = ""
-    m  : Dict[int, int] = {}
+    # Convenience helpers
+    get = loop.get_column
 
-    for row in range(loop.length()):
-        if loop[auth_col][row] != chain_id:
+    mon_ids  = get('mon_id')           # 3-letter codes
+    asym_ids = get('auth_asym_id') if loop.find_tag('auth_asym_id') \
+               else get('asym_id')     # fallback
+    seq_ids  = get('seq_id')           # always present
+
+    seq = ""
+    mapping: Dict[int, int] = {}
+
+    for i in range(loop.length()):
+        if asym_ids[i] != chain_id:
             continue
-        res3   = loop[mon_col][row]
-        res1   = gemmi.to_one_letter_code(res3) or 'X'
-        seq_id = int(loop[seq_col][row])        # 1‑based
+        res1 = gemmi.to_one_letter_code(mon_ids[i]) or 'X'
         seq += res1
-        m[len(seq)-1] = seq_id - 1              # convert to 0‑based
+        mapping[len(seq) - 1] = int(seq_ids[i]) - 1  # 0-based for AF-3
 
     if not seq:
         raise ValueError(f"Chain {chain_id} not found in {cif_path}")
 
-    return seq, m
-    
+    return seq, mapping
+
 def kalign_pair(q_seq: str, t_seq: str) -> Tuple[str, str]:
     """Return (aligned_query, aligned_template) using Kalign‑3."""
     with tempfile.NamedTemporaryFile("w+", suffix=".fasta", delete=False) as f:
