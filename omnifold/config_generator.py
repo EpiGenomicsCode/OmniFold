@@ -330,6 +330,46 @@ class ConfigGenerator:
         
         return unique_boltz_templates
 
+    def _add_templates_to_af3_config(self, af3_config: Dict[str, Any], job_input: JobInput, container_job_output_dir: str):
+        """Injects template information into the AlphaFold 3 config."""
+        if not job_input.template_store_path:
+            return
+
+        mapping_pkl_path = Path(job_input.template_store_path) / "mapping.pkl"
+        if not mapping_pkl_path.is_file():
+            logger.warning(f"Template mapping file not found at {mapping_pkl_path}. Cannot add templates to AF3 config.")
+            return
+
+        try:
+            with open(mapping_pkl_path, "rb") as f:
+                template_exports: List[TemplateExport] = pickle.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load template mapping pickle {mapping_pkl_path}: {e}")
+            return
+            
+        templates_by_chain: Dict[str, List[Dict[str, Any]]] = {}
+        for tpl in template_exports:
+            if tpl.hit_from_chain not in templates_by_chain:
+                templates_by_chain[tpl.hit_from_chain] = []
+            
+            # Convert paths to be relative to the container's mount point
+            container_cif_path = Path(container_job_output_dir) / Path(tpl.cif_path).relative_to(Path(job_input.output_dir))
+
+            templates_by_chain[tpl.hit_from_chain].append({
+                "mmcifPath": str(container_cif_path),
+                "queryIndices": list(tpl.query_idx_to_template_idx.keys()),
+                "templateIndices": list(tpl.query_idx_to_template_idx.values())
+            })
+            
+        for seq_entity in af3_config.get("sequences", []):
+            if "protein" in seq_entity:
+                chain_id = seq_entity["protein"]["id"]
+                if chain_id in templates_by_chain:
+                    if "templates" not in seq_entity["protein"]:
+                        seq_entity["protein"]["templates"] = []
+                    seq_entity["protein"]["templates"].extend(templates_by_chain[chain_id])
+                    logger.info(f"Added {len(templates_by_chain[chain_id])} templates to AF3 config for chain {chain_id}.")
+
     def _generate_boltz_yaml_from_job_input(
         self,
         job_input: JobInput,

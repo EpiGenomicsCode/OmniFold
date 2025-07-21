@@ -9,12 +9,14 @@ import sys # Added for sys.executable
 import pickle
 import hashlib
 import gzip
+import requests
 
 from .config_generator import ConfigGenerator
 from .util.definitions import JobInput, SequenceInfo
 from .util.file_converters import af3_json_to_chai_fasta, job_input_to_chai_fasta
 from .util.msa_utils import extract_all_protein_a3ms_from_af3_json # Import the utility
 from .util.template_export import TemplateExport
+from .util.template_aligner import template_seq_and_index, kalign_pair, build_mapping
 
 
 logger = logging.getLogger(__name__)
@@ -201,6 +203,133 @@ class MSAManager:
 
         except Exception as e:
             logger.error(f"Failed to process template metadata and create template store: {e}", exc_info=True)
+            return None
+
+    def _process_colabfold_templates(self, colabfold_output_dir: Path) -> Optional[str]:
+        """
+        Processes ColabFold's m8 template file to create the canonical template store.
+        """
+        logger.info("Starting ColabFold template processing.")
+        m8_file = colabfold_output_dir / "all_chain_templates.m8"
+        if not m8_file.is_file():
+            logger.warning(f"ColabFold template file not found at {m8_file}. This might be expected if no templates were found. Skipping template processing.")
+            return None
+
+        template_store_dir = self.output_dir / "templates"
+        template_store_dir.mkdir(parents=True, exist_ok=True)
+        pdb_dir = template_store_dir / "pdb"
+        pdb_dir.mkdir(parents=True, exist_ok=True)
+
+        hits_m8_path = template_store_dir / "hits.m8"
+        mapping_pkl_path = template_store_dir / "mapping.pkl"
+        
+        all_exports: List[TemplateExport] = []
+        
+        try:
+            # Get query sequences to perform alignments
+            query_sequences = {seq.chain_id: seq.sequence for seq in self.job_input.sequences if seq.molecule_type == 'protein'}
+
+            # The m8 file from colabfold has SHA1s. We need to map them back to chain IDs for Chai.
+            msa_map_path = colabfold_output_dir / "msa_map.json"
+            if not msa_map_path.is_file():
+                logger.error(f"Could not find msa_map.json in {colabfold_output_dir}. Cannot remap template query IDs.")
+                return None
+            with open(msa_map_path, 'r') as f:
+                msa_map = json.load(f)
+            
+            # The PQT filename is the hash. We create a map from hash -> chain_id
+            hash_to_chain_id = {Path(pqt_path).stem.split('.')[0]: header.split('|')[0] for header, pqt_path in msa_map.items()}
+            logger.debug(f"Loaded {len(hash_to_chain_id)} chain hashes for template remapping.")
+
+            with open(m8_file, 'r') as f_in, open(hits_m8_path, 'w') as f_out:
+                unique_pdb_ids = set()
+                num_hits_processed = 0
+                for line in f_in:
+                    cols = line.strip().split('\t')
+                    if len(cols) < 12:
+                        continue
+                    
+                    query_hash, subject_id, pident_str, length_str, mismatch, gapopen, qstart, qend, sstart, send, evalue_str, bitscore = cols[:12]
+                    
+                    chain_id_for_hit = hash_to_chain_id.get(query_hash)
+                    if not chain_id_for_hit:
+                        logger.warning(f"Could not find chain ID for template hit with query hash {query_hash}. Skipping.")
+                        continue
+                        
+                    pdb_id, template_chain_id = subject_id.split('_')
+                    unique_pdb_ids.add(pdb_id.lower())
+
+                    # --- New Alignment Logic ---
+                    cif_path_str = str(pdb_dir / f"{pdb_id.lower()}.cif")
+                    if not Path(cif_path_str).is_file():
+                        # Download if not already fetched
+                        url = f"https://files.rcsb.org/download/{pdb_id.lower()}.cif"
+                        try:
+                            response = requests.get(url, timeout=30)
+                            response.raise_for_status()
+                            with open(cif_path_str, 'w') as f:
+                                f.write(response.text)
+                        except requests.exceptions.RequestException as e:
+                            logger.warning(f"Failed to download {url}: {e}. Skipping template.")
+                            continue
+                    
+                    try:
+                        query_sequence = query_sequences[chain_id_for_hit]
+                        template_sequence, t_seq_to_idx = template_seq_and_index(cif_path_str, template_chain_id)
+                        q_aln, t_aln = kalign_pair(query_sequence, template_sequence)
+                        q2t_map = build_mapping(q_aln, t_aln, t_seq_to_idx)
+                        
+                        # Quality Gate
+                        identity = float(pident_str)
+                        coverage = len(q2t_map) / len(query_sequence)
+                        if coverage < 0.3 or identity < 20.0 or float(evalue_str) > 1e-3:
+                            logger.debug(f"Skipping low-quality template {subject_id} for chain {chain_id_for_hit} (Coverage: {coverage:.2f}, Identity: {identity:.2f}, E-value: {evalue_str})")
+                            continue
+
+                    except Exception as e:
+                        logger.warning(f"Failed to process alignment for template {subject_id} for chain {chain_id_for_hit}: {e}")
+                        continue
+                    # --- End Alignment Logic ---
+
+                    # Write to Chai's hits.m8 file with the correct chain_id
+                    new_m8_line = f"{chain_id_for_hit}\t{subject_id}\t{pident_str}\t{length_str}\t{mismatch}\t{gapopen}\t{qstart}\t{qend}\t{sstart}\t{send}\t{evalue_str}\t{bitscore}\n"
+                    f_out.write(new_m8_line)
+
+                    # Create TemplateExport for Boltz
+                    export = TemplateExport(
+                        pdb_id=pdb_id.lower(),
+                        chain_id=template_chain_id,
+                        cif_path=Path(cif_path_str).resolve(),
+                        query_idx_to_template_idx=q2t_map,
+                        e_value=float(evalue_str),
+                        hit_from_chain=chain_id_for_hit
+                    )
+                    all_exports.append(export)
+                    num_hits_processed += 1
+            
+            logger.info(f"Processed and kept {num_hits_processed} high-quality template hits from ColabFold.")
+
+            # Downloading is now handled within the loop
+            # logger.info(f"Fetching {len(unique_pdb_ids)} unique mmCIF files from RCSB.")
+            # for pdb_id in unique_pdb_ids:
+            #     cif_path = pdb_dir / f"{pdb_id}.cif"
+            #     if not cif_path.exists():
+            #         url = f"https://files.rcsb.org/download/{pdb_id}.cif"
+            #         try:
+            #             response = requests.get(url, timeout=30)
+            #             response.raise_for_status()
+            #             cif_path.write_text(response.text)
+            #         except requests.exceptions.RequestException as e:
+            #             logger.warning(f"Failed to download {url}: {e}")
+
+            with open(mapping_pkl_path, "wb") as pkl_f:
+                pickle.dump(all_exports, pkl_f)
+
+            logger.info(f"Successfully created template store from ColabFold at: {template_store_dir}")
+            return str(template_store_dir.resolve())
+
+        except Exception as e:
+            logger.error(f"Failed to process ColabFold templates: {e}", exc_info=True)
             return None
 
     def generate_msa(self) -> Optional[Dict[str, Any]]:
@@ -639,7 +768,8 @@ class MSAManager:
             "-m", "omnifold.util.generate_colabfold_msas",
             str(temp_fasta_path),
             "--out_dir", str(colabfold_output_dir),
-            "--write_a3m" # Always write A3M for Boltz/AF3 consumption
+            "--write_a3m", # Always write A3M for Boltz/AF3 consumption
+            "--include_templates" # Always search for templates
         ]
         
         # Note: We are not exposing the --include_templates flag from the underlying
@@ -702,6 +832,9 @@ class MSAManager:
             # We can still proceed without it if Chai-1 is not being run.
             chai_fasta_path = None
         
+        # --- Process Templates ---
+        template_store_path = self._process_colabfold_templates(colabfold_output_dir)
+        
         final_results = {
             "source": "colabfold",
             "protein_id_to_a3m_path": {
@@ -709,7 +842,8 @@ class MSAManager:
                 "paired": protein_id_to_paired_a3m_path
             },
             "protein_id_to_pqt_path": protein_id_to_pqt_path,
-            "chai_fasta_path": str(chai_fasta_path) if chai_fasta_path else None
+            "chai_fasta_path": str(chai_fasta_path) if chai_fasta_path else None,
+            "template_store_path": template_store_path
         }
         logger.info(f"--- MSAManager ColabFold Results ---\n{json.dumps(final_results, indent=2)}\n------------------------------------")
         return final_results

@@ -1,11 +1,12 @@
 numpy
-pandas
-biopython
+pandas==2.2.2
+biopython==1.81
 plotly
 jinja2
 pyfastx
-PyYAML
+PyYAML==6.0.1
 pydantic 
-requests
+requests==2.31.0
 tqdm
-pyarrow
+pyarrow==15.0.0
+gemmi==0.6.5
