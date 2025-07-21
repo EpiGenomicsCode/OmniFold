@@ -158,9 +158,6 @@ class Runner:
             if template_store_host and os.path.isdir(template_store_host):
                 container_template_store = f"{container_job_output_root}/templates"
                 binds[template_store_host] = f"{container_template_store}:ro"
-                self.env_vars = {"CHAI_TEMPLATE_CIF_FOLDER": f"{container_template_store}/pdb"}
-                container_m8_path = f"{container_template_store}/hits.m8"
-                model_command.extend(["--template-hits-path", container_m8_path])
 
         elif model_name == "chai1":
             sif_path = self.config.get("chai1_sif_path")
@@ -238,7 +235,7 @@ class Runner:
             if template_store_host and os.path.isdir(template_store_host):
                 container_template_store = f"{container_job_output_root}/templates"
                 binds[template_store_host] = f"{container_template_store}:ro"
-                self.env_vars = {"CHAI_TEMPLATE_CIF_FOLDER": f"{container_template_store}/pdb"}
+                extra_env = {"CHAI_TEMPLATE_CIF_FOLDER": f"{container_template_store}/pdb"}
                 container_m8_path = f"{container_template_store}/hits.m8"
                 model_command.extend(["--template-hits-path", container_m8_path])
 
@@ -284,6 +281,7 @@ class Runner:
         logger.info(f"Final assembled command for {model_name}: {' '.join(full_cmd)}")
 
         env = os.environ.copy()
+        env.update(extra_env)
         if gpu_id is not None:
             env["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
             logger.info(f"Setting CUDA_VISIBLE_DEVICES={gpu_id} for {model_name}")
