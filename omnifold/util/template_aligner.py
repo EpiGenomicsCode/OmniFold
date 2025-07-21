@@ -5,39 +5,38 @@ import tempfile
 from pathlib import Path
 from typing import Dict, Tuple
 
-import gemmi
-from typing import Dict, Tuple
+TAGSET = [  # full tags – Gemmi’s Table takes *only* absolute names
+    '_pdbx_poly_seq_scheme.mon_id',
+    '_pdbx_poly_seq_scheme.auth_asym_id',
+    '_pdbx_poly_seq_scheme.asym_id',
+    '_pdbx_poly_seq_scheme.seq_id',
+]
 
-import gemmi
-from typing import Dict, Tuple
+FALLBACK = [  # older files → _entity_poly_seq
+    '_entity_poly_seq.mon_id',
+    '_entity_poly_seq.entity_id',
+    '_entity_poly_seq.num',
+]
 
 def template_seq_and_index(cif_path: str, chain_id: str) -> Tuple[str, Dict[int, int]]:
-    """
-    Return SEQRES-style sequence for `chain_id` and a mapping
-    query_idx (0-based) → template_idx (0-based, includes unresolved residues).
-    """
     doc   = gemmi.cif.read_file(cif_path)
     block = doc.sole_block()
 
-    # Prefer the modern table; fall back to the legacy one
-    prefix = '_pdbx_poly_seq_scheme.' if block.find_value('_pdbx_poly_seq_scheme.mon_id') \
-             else '_entity_poly_seq.'
-    tbl = gemmi.cif.Table(block, prefix,
-                          ['mon_id', 'auth_asym_id', 'asym_id', 'seq_id'])
+    # choose the category present in this file
+    tags = TAGSET if block.find_value(TAGSET[0]) else FALLBACK
+    table = gemmi.cif.Table(block, tags)          # ← corrected signature
 
-    seq      : str            = ""
-    mapping  : Dict[int, int] = {}
-
-    for row in tbl:
-        asym = row['auth_asym_id'] or row['asym_id']
+    seq, mapping = "", {}
+    for row in table:
+        asym = row[1] or row[2]  # auth_asym_id first; fallback to asym_id/entity_id
         if asym != chain_id:
             continue
-        res1 = gemmi.to_one_letter_code(row['mon_id']) or 'X'
-        seq += res1
-        mapping[len(seq) - 1] = int(row['seq_id']) - 1   # AF3 expects 0-based
+        aa = gemmi.to_one_letter_code(row[0]) or 'X'
+        seq += aa
+        mapping[len(seq) - 1] = int(row[-1]) - 1  # 0-based for AF3
 
     if not seq:
-        raise ValueError(f"{chain_id} not present in {cif_path}")
+        raise ValueError(f"{chain_id} missing in {cif_path}")
 
     return seq, mapping
 
