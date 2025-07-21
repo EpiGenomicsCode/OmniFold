@@ -76,6 +76,7 @@ class Runner:
         sif_path = ""
         model_command = []
         binds = {}
+        extra_env: Dict[str, str] = {}
 
         # --- Universal Bind Mount ---
         # All models will now operate within a single, consistent directory structure
@@ -235,7 +236,7 @@ class Runner:
             if template_store_host and os.path.isdir(template_store_host):
                 container_template_store = f"{container_job_output_root}/templates"
                 binds[template_store_host] = f"{container_template_store}:ro"
-                extra_env = {"CHAI_TEMPLATE_CIF_FOLDER": f"{container_template_store}/pdb"}
+                extra_env["CHAI_TEMPLATE_CIF_FOLDER"] = f"{container_template_store}/pdb"
                 container_m8_path = f"{container_template_store}/hits.m8"
                 model_command.extend(["--template-hits-path", container_m8_path])
 
