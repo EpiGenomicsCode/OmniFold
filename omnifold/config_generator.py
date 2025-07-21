@@ -278,7 +278,7 @@ class ConfigGenerator:
             logger.error(f"Error generating AlphaFold3 JSON for {job_input.name_stem} at {json_file_path}: {e}", exc_info=True)
             return None
 
-    def _build_boltz_templates_from_store(self, job_input: JobInput, container_job_output_dir: str) -> List[Dict[str, Any]]:
+    def _build_boltz_templates_from_store(self, job_input: JobInput, job_output_root_host_dir: Path) -> List[Dict[str, Any]]:
         """Builds the templates block for Boltz YAML from the generated template store."""
         if not job_input.template_store_path:
             return []
@@ -303,7 +303,13 @@ class ConfigGenerator:
 
         for tpl in template_exports:
             # The cif_path in the pickle is absolute on the host. We need to make it relative to the container's mount point.
-            container_cif_path = Path(container_job_output_dir) / Path(tpl.cif_path).relative_to(Path(job_input.output_dir))
+            try:
+                rel_path = Path(tpl.cif_path).relative_to(job_output_root_host_dir)
+            except ValueError:
+                # Fallback: relative to template_store_path parent
+                rel_path = Path(tpl.cif_path).relative_to(Path(job_input.template_store_path).parent.parent)
+
+            container_cif_path = Path("/data/job_output") / rel_path
             
             boltz_templates.append({
                 "cif": str(container_cif_path),
