@@ -7,29 +7,42 @@ from typing import Dict, Tuple
 
 def template_seq_and_index(cif_path: str, chain_id: str) -> Tuple[str, Dict[int, int]]:
     """
-    Return (sequence, mapping) where mapping[q_idx] = template_idx (0‑based).
-    template_idx counts every residue in _pdbx_poly_seq_scheme, so positions
-    with missing atoms are still addressable by AlphaFold‑3.
+    Extract full SEQRES‑style sequence for `chain_id` from `_pdbx_poly_seq_scheme`
+    and build a dict mapping: query_index (0‑based) → template_index (0‑based).
+    The template_index counts every residue in the scheme, even if unresolved,
+    which is what AlphaFold‑3 expects for `templateIndices`.
     """
-    st = gemmi.read_structure(cif_path)
-    chain = st[0][chain_id]                       # first model only
+    doc   = gemmi.cif.read_file(cif_path)
+    block = doc.sole_block()
 
-    polymer = chain.get_polymer()                 # None for waters/ligands
-    if polymer is None:
-        raise ValueError(f"{cif_path}:{chain_id} is not a polymer")
+    loop = block.find_loop('_pdbx_poly_seq_scheme.mon_id')
+    if loop is None:
+        raise ValueError(f"{cif_path} lacks _pdbx_poly_seq_scheme")
 
-    scheme = polymer.get_poly_seq_scheme()
-    seq            : str           = ""
-    seq_to_res_idx : Dict[int, int] = {}
+    # Column indices (mandatory in PDBx/mmCIF spec)
+    tag = {name: i for i, name in enumerate(loop.tags)}
+    mon_col   = tag['mon_id']
+    seq_col   = tag['seq_id']
+    # Auth chain ID is in auth_asym_id; fall back to asym_id if absent
+    auth_col  = tag.get('auth_asym_id', tag.get('asym_id'))
 
-    for i, step in enumerate(scheme):             # `step` is PolySeqScheme
-        aa = gemmi.to_one_letter_code(step.mon_id) or 'X'
-        seq += aa
-        # seq_id is 1‑based; convert to 0‑based as AF‑3 expects
-        seq_to_res_idx[i] = step.seq_id - 1
+    seq: str = ""
+    m  : Dict[int, int] = {}
 
-    return seq, seq_to_res_idx
+    for row in range(loop.length()):
+        if loop[auth_col][row] != chain_id:
+            continue
+        res3   = loop[mon_col][row]
+        res1   = gemmi.to_one_letter_code(res3) or 'X'
+        seq_id = int(loop[seq_col][row])        # 1‑based
+        seq += res1
+        m[len(seq)-1] = seq_id - 1              # convert to 0‑based
 
+    if not seq:
+        raise ValueError(f"Chain {chain_id} not found in {cif_path}")
+
+    return seq, m
+    
 def kalign_pair(q_seq: str, t_seq: str) -> Tuple[str, str]:
     """Return (aligned_query, aligned_template) using Kalign‑3."""
     with tempfile.NamedTemporaryFile("w+", suffix=".fasta", delete=False) as f:
