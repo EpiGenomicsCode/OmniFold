@@ -347,18 +347,29 @@ class MSAManager:
                              new_block.add_item(rev_loop)
 
                         # Step D: Manually create and populate the new _atom_site loop
-                        atom_site_loop = original_block.find_loop('_atom_site.id')
-                        if not atom_site_loop:
+                        # find_loop returns a Column object for the given tag.
+                        atom_site_id_column = original_block.find_loop('_atom_site.id')
+                        if not atom_site_id_column:
                             raise ValueError("_atom_site loop not found in original CIF.")
                         
-                        tags = atom_site_loop.tags
-                        new_atom_site_loop = new_block.init_loop('_atom_site.', tags)
+                        # The actual Loop object is an attribute of the Column.
+                        atom_site_loop = atom_site_id_column.loop
                         
-                        chain_id_col_idx = tags.index('auth_asym_id')
+                        # Get the full tags (e.g., '_atom_site.id') and short tags (e.g., 'id')
+                        full_tags = atom_site_loop.tags
+                        short_tags = [tag.split('.')[-1] for tag in full_tags]
                         
+                        # Initialize the new loop in the new block
+                        new_atom_site_loop = new_block.init_loop('_atom_site.', short_tags)
+                        
+                        # Find the index of the chain ID column in the original loop
+                        chain_id_col_idx = full_tags.index('_atom_site.auth_asym_id')
+                        
+                        # Iterate through the ROWS of the original loop
                         for row in atom_site_loop:
                             if row[chain_id_col_idx] == template_chain_id:
-                                new_atom_site_loop.add_row(row)
+                                # gemmi rows need to be converted to a list of strings to be added
+                                new_atom_site_loop.add_row(list(row))
                         
                         # Step E: Write the new document
                         new_doc.write_file(str(single_chain_cif_path))
