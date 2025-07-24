@@ -328,64 +328,44 @@ class MSAManager:
                 single_chain_cif_path.parent.mkdir(exist_ok=True)
                 
                 if not single_chain_cif_path.exists():
-                    logger.info(f"Extracting chain {template_chain_id} from {full_cif_path} using raw text parsing.")
+                    logger.info(f"Extracting chain {template_chain_id} from {full_cif_path} using robust Gemmi rebuild.")
                     try:
-                        with open(full_cif_path, 'r') as infile, open(single_chain_cif_path, 'w') as outfile:
-                            in_atom_site_loop = False
-                            chain_id_col = -1
-                            
-                            lines = infile.readlines()
-                            line_iterator = iter(lines)
+                        st = gemmi.read_structure(str(full_cif_path))
+                        
+                        # --- Rebuild Strategy ---
+                        new_st = gemmi.Structure()
+                        new_st.cell = st.cell
+                        new_st.spacegroup_hm = st.spacegroup_hm
 
-                            for line in line_iterator:
-                                stripped_line = line.strip()
-                                if not stripped_line:
-                                    continue
-                                
-                                if stripped_line.startswith('loop_'):
-                                    # Check if the next line is an atom_site tag
-                                    # We need to peek ahead without consuming the line
-                                    next_line_pos = infile.tell()
-                                    next_line = infile.readline().strip()
-                                    infile.seek(next_line_pos) # Go back
+                        chain_to_keep_found = False
+                        for i, model in enumerate(st):
+                            for chain in model:
+                                if chain.name == template_chain_id:
+                                    new_model = gemmi.Model(str(i + 1))
+                                    new_model.add_chain(chain.clone())
+                                    new_st.add_model(new_model)
+                                    chain_to_keep_found = True
+                                    break
+                            if chain_to_keep_found:
+                                break
+                        
+                        if not chain_to_keep_found:
+                             raise ValueError(f"Chain '{template_chain_id}' not found in the source file {full_cif_path}.")
 
-                                    if next_line.startswith('_atom_site.'):
-                                        in_atom_site_loop = True
-                                        outfile.write(line) # Write "loop_"
-                                        
-                                        tags = []
-                                        # Consume all atom_site tags
-                                        tag_line = next(line_iterator).strip()
-                                        while tag_line.startswith('_atom_site.'):
-                                            tags.append(tag_line)
-                                            outfile.write(tag_line + '\n')
-                                            tag_line = next(line_iterator).strip()
-                                        
-                                        try:
-                                            chain_id_col = tags.index('_atom_site.auth_asym_id')
-                                        except ValueError:
-                                            raise ValueError("Could not find '_atom_site.auth_asym_id' in the CIF header.")
-                                        
-                                        # The line after the tags is the first data line
-                                        data_line = tag_line
-                                        columns = re.findall(r'(\S+|".*?"|\'.*?\')', data_line)
-                                        if len(columns) > chain_id_col and columns[chain_id_col] == template_chain_id:
-                                            outfile.write(data_line + '\n')
-                                        continue # Move to the next line in the main loop
+                        # --- Force-rebuild entities robustly ---
+                        new_st.add_entity_types(overwrite=True)
+                        new_st.assign_subchains()
+                        new_st.ensure_entities()
+                        new_st.deduplicate_entities()
 
-                                # If we are in the data part of the loop
-                                if in_atom_site_loop:
-                                    columns = re.findall(r'(\S+|".*?"|\'.*?\')', stripped_line)
-                                    if len(columns) > chain_id_col and columns[chain_id_col] == template_chain_id:
-                                        outfile.write(stripped_line + '\n')
-                                # Otherwise, it's a header line
-                                else:
-                                    outfile.write(line)
-
-                        logger.info(f"Successfully extracted chain {template_chain_id} to {single_chain_cif_path.name}")
-                    except (ValueError, RuntimeError, AttributeError) as e:
-                        logger.error(f"Failed to extract chain for {subject_id}: {e}", exc_info=True)
-                        continue
+                        # Write the new, clean structure to a file.
+                        doc = new_st.make_mmcif_document()
+                        doc.write_file(str(single_chain_cif_path))
+                        logger.info(f"Successfully rebuilt and saved single chain {template_chain_id} to {single_chain_cif_path.name}")
+                    
+                    except (ValueError, RuntimeError) as e:
+                        logger.error(f"Failed to extract chain for {subject_id} using Gemmi: {e}", exc_info=True)
+                        continue # Skip this template if extraction fails
 
                 full_template_sequence, _ = template_seq_and_index(str(single_chain_cif_path), template_chain_id)
                 
