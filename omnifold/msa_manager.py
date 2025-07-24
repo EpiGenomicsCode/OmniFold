@@ -259,11 +259,18 @@ class MSAManager:
             # Build a reverse map from sequence hash to a list of chain IDs.
             # This is needed because the colabfold output m8 file uses sequence hashes, not chain IDs.
             hash_to_chains: Dict[str, List[str]] = {}
-            for chain_id, data in raw_msa_map.items():
-                seq_hash = data['hash']
+            for header, pqt_path_str in raw_msa_map.items():
+                chain_id = header.split('|')[0]
+                # The PQT filename is <HASH>.aligned.pqt. We need to extract the hash.
+                pqt_filename = Path(pqt_path_str).name
+                seq_hash = pqt_filename.split('.')[0]
+                
                 if seq_hash not in hash_to_chains:
                     hash_to_chains[seq_hash] = []
-                hash_to_chains[seq_hash].append(chain_id)
+                
+                # Avoid adding duplicate chain IDs if the same header appears multiple times
+                if chain_id not in hash_to_chains[seq_hash]:
+                    hash_to_chains[seq_hash].append(chain_id)
             logger.info(f"Built hash-to-chains map: {hash_to_chains}")
 
             template_hits = pd.read_csv(m8_file, sep='\\t', header=None)
