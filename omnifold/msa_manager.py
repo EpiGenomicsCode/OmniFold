@@ -12,6 +12,8 @@ import gzip
 import requests
 import pandas as pd
 from omnifold.util.template_aligner import template_seq_and_index, kalign_pair, build_mapping
+from omnifold.util.template_export import TemplateExport
+from omnifold.config_generator import ConfigGenerator
 
 
 logger = logging.getLogger(__name__)
