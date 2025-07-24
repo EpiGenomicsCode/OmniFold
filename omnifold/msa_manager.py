@@ -331,12 +331,16 @@ class MSAManager:
                     logger.info(f"Extracting chain {template_chain_id} from {full_cif_path} using robust Gemmi rebuild.")
                     try:
                         st = gemmi.read_structure(str(full_cif_path))
+                        original_date = None
+                        try:
+                            original_date = st.info["_pdbx_database_status.recvd_initial_deposition_date"]
+                        except KeyError:
+                            logger.debug(f"No release date found in original template {full_cif_path.name}")
                         
                         # --- Rebuild Strategy ---
                         new_st = gemmi.Structure()
                         new_st.cell = st.cell
                         new_st.spacegroup_hm = st.spacegroup_hm
-                        new_st.info = st.info.copy() # Copy metadata, including release date
 
                         chain_to_keep_found = False
                         for i, model in enumerate(st):
@@ -353,14 +357,21 @@ class MSAManager:
                         if not chain_to_keep_found:
                              raise ValueError(f"Chain '{template_chain_id}' not found in the source file {full_cif_path}.")
 
-                        # --- Force-rebuild entities robustly ---
-                        new_st.add_entity_types(overwrite=True)
-                        new_st.assign_subchains()
-                        new_st.ensure_entities()
-                        new_st.deduplicate_entities()
-
-                        # Write the new, clean structure to a file.
+                        # --- Force-rebuild entities and inject date ---
+                        new_st.setup_entities()
                         doc = new_st.make_mmcif_document()
+                        block = doc.sole_block()
+
+                        if not block.find_loop("_pdbx_database_status.recvd_initial_deposition_date"):
+                            if original_date:
+                                logger.info(f"Injecting original release date ({original_date}) into {single_chain_cif_path.name}")
+                                block.set_pair("_pdbx_database_status.recvd_initial_deposition_date", original_date)
+                            else:
+                                logger.warning(f"Injecting default release date into {single_chain_cif_path.name}")
+                                block.set_pair("_pdbx_database_status.recvd_initial_deposition_date", "2020-01-01")
+                            block.set_pair("_pdbx_database_status.status_code", "REL")
+
+                        # Write the final file
                         doc.write_file(str(single_chain_cif_path))
                         logger.info(f"Successfully rebuilt and saved single chain {template_chain_id} to {single_chain_cif_path.name}")
                     
