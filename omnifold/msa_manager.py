@@ -20,6 +20,7 @@ from omnifold.config_generator import ConfigGenerator
 from omnifold.util.file_converters import job_input_to_chai_fasta, af3_json_to_chai_fasta
 from omnifold.util.msa_utils import extract_all_protein_a3ms_from_af3_json
 import shutil
+import string # Added for string.ascii_lowercase and string.digits
 
 
 logger = logging.getLogger(__name__)
@@ -672,10 +673,11 @@ class MSAManager:
             name_from_json_field = input_data.get("name")
 
             if name_from_json_field and isinstance(name_from_json_field, str) and name_from_json_field.strip():
-                # Use the "name" field from the JSON file, sanitize, and lowercase
-                sanitized_name = "".join(c if c.isalnum() or c in ['_','-'] else '_' for c in name_from_json_field)
-                name_prefix = sanitized_name.lower()
-                logger.info(f"Derived name_prefix '{name_prefix}' from JSON 'name' field ('{name_from_json_field}'), sanitized and lowercased.")
+                # Replicate AF3's sanitised_name() method exactly.
+                lower_spaceless_name = name_from_json_field.lower().replace(' ', '_')
+                allowed_chars = set(string.ascii_lowercase + string.digits + '_-.')
+                name_prefix = ''.join(l for l in lower_spaceless_name if l in allowed_chars)
+                logger.info(f"Derived name_prefix '{name_prefix}' from JSON 'name' field ('{name_from_json_field}'), using AF3's exact sanitization logic.")
             else:
                 # Fallback to the input JSON filename's stem, and lowercase
                 name_prefix = input_json_path_obj.stem.lower()
