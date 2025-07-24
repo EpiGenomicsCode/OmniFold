@@ -13,6 +13,7 @@ import sys # Added for sys.executable
 import pickle
 import hashlib
 import pandas as pd
+import re
 from omnifold.util.template_aligner import template_seq_and_index, kalign_pair, build_mapping
 from omnifold.util.template_export import TemplateExport
 from omnifold.config_generator import ConfigGenerator
@@ -327,54 +328,61 @@ class MSAManager:
                 single_chain_cif_path.parent.mkdir(exist_ok=True)
                 
                 if not single_chain_cif_path.exists():
-                    logger.info(f"Extracting chain {template_chain_id} from {full_cif_path}.")
+                    logger.info(f"Extracting chain {template_chain_id} from {full_cif_path} using raw text parsing.")
                     try:
-                        # Step A: Read the original CIF file's block
-                        original_doc = gemmi.cif.read_file(str(full_cif_path))
-                        original_block = original_doc.sole_block()
+                        with open(full_cif_path, 'r') as infile, open(single_chain_cif_path, 'w') as outfile:
+                            in_atom_site_loop = False
+                            chain_id_col = -1
+                            
+                            lines = infile.readlines()
+                            line_iterator = iter(lines)
 
-                        # Step B: Create a new, clean document and block
-                        new_doc = gemmi.cif.Document()
-                        new_block = new_doc.add_new_block(original_block.name)
+                            for line in line_iterator:
+                                stripped_line = line.strip()
+                                if not stripped_line:
+                                    continue
+                                
+                                if stripped_line.startswith('loop_'):
+                                    # Check if the next line is an atom_site tag
+                                    # We need to peek ahead without consuming the line
+                                    next_line_pos = infile.tell()
+                                    next_line = infile.readline().strip()
+                                    infile.seek(next_line_pos) # Go back
 
-                        # Step C: Manually copy essential header loops
-                        status_loop = original_block.find_loop('_pdbx_database_status.pdb_id')
-                        if status_loop:
-                            new_block.add_item(status_loop)
-                        
-                        rev_loop = original_block.find_loop('_database_PDB_rev.num')
-                        if rev_loop:
-                             new_block.add_item(rev_loop)
+                                    if next_line.startswith('_atom_site.'):
+                                        in_atom_site_loop = True
+                                        outfile.write(line) # Write "loop_"
+                                        
+                                        tags = []
+                                        # Consume all atom_site tags
+                                        tag_line = next(line_iterator).strip()
+                                        while tag_line.startswith('_atom_site.'):
+                                            tags.append(tag_line)
+                                            outfile.write(tag_line + '\n')
+                                            tag_line = next(line_iterator).strip()
+                                        
+                                        try:
+                                            chain_id_col = tags.index('_atom_site.auth_asym_id')
+                                        except ValueError:
+                                            raise ValueError("Could not find '_atom_site.auth_asym_id' in the CIF header.")
+                                        
+                                        # The line after the tags is the first data line
+                                        data_line = tag_line
+                                        columns = re.findall(r'(\S+|".*?"|\'.*?\')', data_line)
+                                        if len(columns) > chain_id_col and columns[chain_id_col] == template_chain_id:
+                                            outfile.write(data_line + '\n')
+                                        continue # Move to the next line in the main loop
 
-                        # Step D: Manually create and populate the new _atom_site loop
-                        # find_loop returns a Column object for the given tag.
-                        atom_site_id_column = original_block.find_loop('_atom_site.id')
-                        if not atom_site_id_column:
-                            raise ValueError("_atom_site loop not found in original CIF.")
-                        
-                        # The actual Loop object is an attribute of the Column.
-                        atom_site_loop = atom_site_id_column.loop
-                        
-                        # Get the full tags (e.g., '_atom_site.id') and short tags (e.g., 'id')
-                        full_tags = atom_site_loop.tags
-                        short_tags = [tag.split('.')[-1] for tag in full_tags]
-                        
-                        # Initialize the new loop in the new block
-                        new_atom_site_loop = new_block.init_loop('_atom_site.', short_tags)
-                        
-                        # Find the index of the chain ID column in the original loop
-                        chain_id_col_idx = full_tags.index('_atom_site.auth_asym_id')
-                        
-                        # Iterate through the ROWS of the original loop
-                        for row in atom_site_loop:
-                            if row[chain_id_col_idx] == template_chain_id:
-                                # gemmi rows need to be converted to a list of strings to be added
-                                new_atom_site_loop.add_row(list(row))
-                        
-                        # Step E: Write the new document
-                        new_doc.write_file(str(single_chain_cif_path))
+                                # If we are in the data part of the loop
+                                if in_atom_site_loop:
+                                    columns = re.findall(r'(\S+|".*?"|\'.*?\')', stripped_line)
+                                    if len(columns) > chain_id_col and columns[chain_id_col] == template_chain_id:
+                                        outfile.write(stripped_line + '\n')
+                                # Otherwise, it's a header line
+                                else:
+                                    outfile.write(line)
+
                         logger.info(f"Successfully extracted chain {template_chain_id} to {single_chain_cif_path.name}")
-
                     except (ValueError, RuntimeError, AttributeError) as e:
                         logger.error(f"Failed to extract chain for {subject_id}: {e}", exc_info=True)
                         continue
