@@ -336,6 +336,7 @@ class MSAManager:
                         new_st = gemmi.Structure()
                         new_st.cell = st.cell
                         new_st.spacegroup_hm = st.spacegroup_hm
+                        new_st.info = st.info.copy() # Copy metadata, including release date
 
                         chain_to_keep_found = False
                         for i, model in enumerate(st):
