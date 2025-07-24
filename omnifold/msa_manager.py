@@ -335,19 +335,24 @@ class MSAManager:
                             # --- END DIAGNOSTIC PRINTS ---
                             st = gemmi.read_structure(str(full_cif_path))
                             print(f"DEBUG: Type of object returned by read_structure: {type(st)}", file=sys.stderr)
-                            model = st[0]
+                            
+                            try:
+                                model = st[0]
+                                chains_to_remove = [ch.name for ch in model if ch.name != template_chain_id]
+                                if len(chains_to_remove) == len(model):
+                                    raise ValueError(f"Chain {template_chain_id} not found in {full_cif_path}")
+                                for chain_name in chains_to_remove:
+                                    model.remove_chain(chain_name)
+                                st.write_cif(str(single_chain_cif_path))
+                            except AttributeError as e:
+                                print(f"FATAL: Caught AttributeError: {e}", file=sys.stderr)
+                                print(f"FATAL: Inspecting methods and attributes of the 'st' object (type: {type(st)}):", file=sys.stderr)
+                                print(dir(st), file=sys.stderr)
+                                raise e # Re-raise the exception after printing debug info
 
-                            chains_to_remove = [ch.name for ch in model if ch.name != template_chain_id]
+                            logger.info(f"Successfully extracted chain {template_chain_id} to {single_chain_cif_path.name}")
 
-                            if len(chains_to_remove) == len(model):
-                                raise ValueError(f"Chain {template_chain_id} not found in {full_cif_path}")
-
-                            for chain_name in chains_to_remove:
-                                model.remove_chain(chain_name)
-
-                            # Write the single-chain mmCIF using the correct method
-                            st.write_cif(str(single_chain_cif_path))
-                        except Exception as e:
+                        except (ValueError, RuntimeError) as e:
                             logger.warning(f"Failed to extract chain {template_chain_id} from {full_cif_path}: {e}. Skipping template {subject_id}.")
                             continue
 
