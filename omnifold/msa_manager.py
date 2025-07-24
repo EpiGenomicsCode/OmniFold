@@ -329,57 +329,38 @@ class MSAManager:
                 if not single_chain_cif_path.exists():
                     logger.info(f"Extracting chain {template_chain_id} from {full_cif_path}.")
                     try:
-                        # Step A: Read the original structure to get atomic data and header info
+                        # Step A: Read the original CIF file's block
                         original_doc = gemmi.cif.read_file(str(full_cif_path))
                         original_block = original_doc.sole_block()
-                        st = gemmi.read_structure(str(full_cif_path))
 
-                        # Find the specific chain to keep
-                        chain_to_keep = None
-                        for model in st:
-                            for chain in model:
-                                if chain.name == template_chain_id:
-                                    chain_to_keep = chain.clone()
-                                    break
-                            if chain_to_keep:
-                                break
-                        
-                        if not chain_to_keep:
-                            available_chains = sorted(list(set(ch.name for m in st for ch in m)))
-                            raise ValueError(f"Chain '{template_chain_id}' not found in '{full_cif_path}'. Available chains: {available_chains}")
-
-                        # Step B: Create a new, clean document and structure
+                        # Step B: Create a new, clean document and block
                         new_doc = gemmi.cif.Document()
-                        new_block = new_doc.add_new_block(st.name)
-                        new_st = gemmi.Structure()
-                        new_st.cell = st.cell
-                        new_model = gemmi.Model('1')
-                        new_model.add_chain(chain_to_keep)
-                        new_st.add_model(new_model)
+                        new_block = new_doc.add_new_block(original_block.name)
 
-                        # Step C: Add the structure to the new block to generate atom_site
-                        gemmi.cif.add_structure_to_block(new_st, new_block)
-
-                        # Step D: Manually copy the release date information
+                        # Step C: Manually copy essential header loops
                         status_loop = original_block.find_loop('_pdbx_database_status.pdb_id')
-                        rev_loop = original_block.find_loop('_database_PDB_rev.num')
-                        
                         if status_loop:
                             new_block.add_item(status_loop)
-                            logger.info("Copied _pdbx_database_status loop.")
-                        elif rev_loop:
-                            # Fallback for older entries: find the original deposition date
-                            date_col = rev_loop.find_column('_database_PDB_rev.date_original')
-                            if date_col and len(date_col) > 0:
-                                release_date = date_col[0]
-                                # Create a minimal _pdbx_database_status loop
-                                loop = new_block.init_loop('_pdbx_database_status.', ['pdb_id', 'release_date'])
-                                loop.add_row([st.name, release_date])
-                                logger.info(f"Created fallback _pdbx_database_status with release_date: {release_date}")
-                        else:
-                             logger.warning(f"Could not find any release date info in {full_cif_path}. Template may fail in AF3.")
+                        
+                        rev_loop = original_block.find_loop('_database_PDB_rev.num')
+                        if rev_loop:
+                             new_block.add_item(rev_loop)
 
-                        # Step E: Write the new, clean document
+                        # Step D: Manually create and populate the new _atom_site loop
+                        atom_site_loop = original_block.find_loop('_atom_site.id')
+                        if not atom_site_loop:
+                            raise ValueError("_atom_site loop not found in original CIF.")
+                        
+                        tags = atom_site_loop.tags
+                        new_atom_site_loop = new_block.init_loop('_atom_site.', tags)
+                        
+                        chain_id_col_idx = tags.index('auth_asym_id')
+                        
+                        for row in atom_site_loop:
+                            if row[chain_id_col_idx] == template_chain_id:
+                                new_atom_site_loop.add_row(row)
+                        
+                        # Step E: Write the new document
                         new_doc.write_file(str(single_chain_cif_path))
                         logger.info(f"Successfully extracted chain {template_chain_id} to {single_chain_cif_path.name}")
 
