@@ -19,6 +19,7 @@ from omnifold.util.template_export import TemplateExport
 from omnifold.config_generator import ConfigGenerator
 from omnifold.util.file_converters import job_input_to_chai_fasta, af3_json_to_chai_fasta
 from omnifold.util.msa_utils import extract_all_protein_a3ms_from_af3_json
+import shutil
 
 
 logger = logging.getLogger(__name__)
@@ -241,9 +242,18 @@ class MSAManager:
         pdb_dir = template_store_dir / "pdb"
         pdb_dir.mkdir(parents=True, exist_ok=True)
 
-        hits_m8_path = template_store_dir / "hits.m8"
+        # --- For Chai-1: Copy the raw, unfiltered m8 file ---
+        # Chai-1 performs its own E-value sorting and filtering.
+        chai_hits_m8_path = template_store_dir / "hits.m8"
+        try:
+            shutil.copy(m8_file, chai_hits_m8_path)
+            logger.info(f"Copied raw ColabFold m8 file to {chai_hits_m8_path} for Chai-1.")
+        except Exception as e:
+            logger.warning(f"Could not copy raw m8 file for Chai-1, it may run without templates. Error: {e}")
+            # We don't return here, as Boltz/AF3 processing can still continue.
+
+        # --- For Boltz/AF3: Process and filter templates ---
         mapping_pkl_path = template_store_dir / "mapping.pkl"
-        
         all_exports: List[TemplateExport] = []
         
         try:
@@ -421,26 +431,18 @@ class MSAManager:
                     logger.warning(f"Could not generate alignment mapping for {subject_id}")
                     continue
                 
-                coverage = len(mapping) / len(full_query_sequence)
+                # Simplified filtering for Boltz/AF3, removing coverage check.
                 e_value = float(row[10]) # evalue_str
                 identity = float(row[2])
-                if coverage < 0.3 or identity < 0.20 or e_value > 1e-3:
+                if identity < 0.20 or e_value > 1e-3:
                     logger.debug(
-                        f"Skipping low-quality template {subject_id} for chain {query_chain_ids[0]} "
-                        f"(Coverage: {coverage:.2f}, Identity: {identity:.2f}, E-value: {e_value})"
+                        f"Skipping low-quality template {subject_id} for Boltz/AF3 "
+                        f"(Identity: {identity:.2f}, E-value: {e_value})"
                     )
                     continue
 
                 # For each chain that shares this sequence, create a template entry.
                 for query_chain_id in query_chain_ids:
-                    # Write the entry for Chai’s hits.m8 (query_id is the real chain ID)
-                    new_m8_line = (
-                        f"{query_chain_id}\t{subject_id}\t{row[2]}\t{row[3]}\t{row[4]}\t{row[5]}\t"
-                        f"{row[6]}\t{row[7]}\t{row[8]}\t{row[9]}\t{row[10]}\t{row[11]}\n"
-                    )
-                    with open(hits_m8_path, 'a') as f_out: # Append to existing file
-                        f_out.write(new_m8_line)
-
                     # Store for Boltz & AF3
                     export = TemplateExport(
                         pdb_id=pdb_id.lower(),
@@ -454,7 +456,7 @@ class MSAManager:
                 
                 processed_template_names.add(subject_id)
             
-            logger.info(f"Processed and kept {len(all_exports)} high-quality template hits from ColabFold.")
+            logger.info(f"Processed and kept {len(all_exports)} high-quality template hits for Boltz/AF3.")
 
             with open(mapping_pkl_path, "wb") as pkl_f:
                 pickle.dump(all_exports, pkl_f)
