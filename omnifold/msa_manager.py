@@ -289,17 +289,17 @@ class MSAManager:
                                     f"starts with {snippet!r}. Skipping this template.")
                                 continue  # skip this hit entirely
 
-                            # Decode bytes – prefer UTF-8, fall back to Latin-1 with replacement.
-                            try:
-                                text = raw_bytes.decode("utf-8")
-                            except UnicodeDecodeError:
-                                text = raw_bytes.decode("latin-1", errors="replace")
+                            # --- Byte-level sanitisation: replace every byte >0x7F with '?'
+                            raw_head = raw_bytes[:32]
+                            clean_bytes = bytes((b if b < 0x80 else 0x3F) for b in raw_bytes)
+                            clean_head = clean_bytes[:32]
 
-                            # Gemmi expects strictly ASCII mmCIF; replace any non-ASCII chars
-                            import re
-                            ascii_text = re.sub(r"[^\x00-\x7F]", "?", text)
+                            logger.debug(
+                                f"{pdb_id.lower()}.cif head (raw→clean): "
+                                f"{raw_head.hex()} -> {clean_head.hex()}")
 
-                            full_cif_path.write_text(ascii_text, encoding="ascii")
+                            with open(full_cif_path, "wb") as f_out:
+                                f_out.write(clean_bytes)
                             logger.info(
                                 f"Saved mmCIF {full_cif_path.name} (chain extraction pending) – {len(text)} bytes")
                         except requests.exceptions.RequestException as e:
