@@ -17,7 +17,8 @@ import re
 from omnifold.util.template_aligner import template_seq_and_index, kalign_pair, build_mapping
 from omnifold.util.template_export import TemplateExport
 from omnifold.config_generator import ConfigGenerator
-from omnifold.util.file_converters import job_input_to_chai_fasta
+from omnifold.util.file_converters import job_input_to_chai_fasta, af3_json_to_chai_fasta
+from omnifold.util.msa_utils import extract_all_protein_a3ms_from_af3_json
 
 
 logger = logging.getLogger(__name__)
