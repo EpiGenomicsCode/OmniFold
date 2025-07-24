@@ -256,15 +256,15 @@ class MSAManager:
             with open(msa_map_path, 'r') as f:
                 raw_msa_map = json.load(f)
 
-            # Build the correct mapping from hash to original chain ID
-            chain_id_map = {}
-            for key, value in raw_msa_map.items():
-                original_chain_id = key.split('|')[0]
-                pqt_path = Path(value)
-                file_hash = pqt_path.stem.split('.')[0]
-                chain_id_map[file_hash] = original_chain_id
-            
-            logger.info(f"Built chain ID map: {chain_id_map}")
+            # Build a reverse map from sequence hash to a list of chain IDs.
+            # This is needed because the colabfold output m8 file uses sequence hashes, not chain IDs.
+            hash_to_chains: Dict[str, List[str]] = {}
+            for chain_id, data in raw_msa_map.items():
+                seq_hash = data['hash']
+                if seq_hash not in hash_to_chains:
+                    hash_to_chains[seq_hash] = []
+                hash_to_chains[seq_hash].append(chain_id)
+            logger.info(f"Built hash-to-chains map: {hash_to_chains}")
 
             template_hits = pd.read_csv(m8_file, sep='\\t', header=None)
             
@@ -272,12 +272,20 @@ class MSAManager:
             top_templates = template_hits.sort_values(by=10, ascending=True).groupby(0).head(4)
             logger.info(f"Filtered to top {len(top_templates)} templates.")
 
-            for index, row in top_templates.iterrows():
-                query_id = row[0]
+            processed_template_names = set()
+            for i, row in top_templates.iterrows():
+                query_hash = row[0]
                 subject_id = row[1]
                 pdb_id, template_chain_id = subject_id.split('_')
                 
-                logger.info(f"--- Hit {index+1}/{len(template_hits)}: Query={query_id}, Template={subject_id} ---")
+                if subject_id in processed_template_names:
+                    continue
+
+                if query_hash not in hash_to_chains:
+                    logger.warning(f"Query hash {query_hash} from template hits not found in MSA map. Skipping template {subject_id}.")
+                    continue
+
+                logger.info(f"--- Hit {i+1}/{len(template_hits)}: Query={query_hash}, Template={subject_id} ---")
 
                 # Step 1: Download full CIF if it doesn't exist
                 full_cif_path = pdb_dir / f"{pdb_id.lower()}.cif"
@@ -330,13 +338,14 @@ class MSAManager:
 
                 full_template_sequence, _ = template_seq_and_index(str(single_chain_cif_path), template_chain_id)
                 
-                # Get the full query sequence from the original job_input
-                original_query_chain_id = chain_id_map.get(query_id)
-                if not original_query_chain_id:
-                    logger.warning(f"Could not find original chain ID for query hash {query_id}. Skipping.")
+                # Get the query sequence using the first chain ID that matches the hash.
+                # All chains with the same hash have the same sequence.
+                query_chain_ids = hash_to_chains.get(query_hash)
+                if not query_chain_ids:
+                    logger.warning(f"Could not find any chains for query hash {query_hash}. Skipping.")
                     continue
                 
-                full_query_sequence = query_sequences[original_query_chain_id]
+                full_query_sequence = query_sequences[query_chain_ids[0]]
 
                 # Calculate 1-based coordinates for the full sequences
                 q_start = 1 # Start of the query segment
@@ -364,29 +373,33 @@ class MSAManager:
                 identity = float(row[2])
                 if coverage < 0.3 or identity < 0.20 or e_value > 1e-3:
                     logger.debug(
-                        f"Skipping low-quality template {subject_id} for chain {original_query_chain_id} "
+                        f"Skipping low-quality template {subject_id} for chain {query_chain_ids[0]} "
                         f"(Coverage: {coverage:.2f}, Identity: {identity:.2f}, E-value: {e_value})"
                     )
                     continue
 
-                # Write the entry for Chai’s hits.m8 (query_id is the real chain ID, not the hash)
-                new_m8_line = (
-                    f"{original_query_chain_id}\t{subject_id}\t{row[2]}\t{row[3]}\t{row[4]}\t{row[5]}\t"
-                    f"{row[6]}\t{row[7]}\t{row[8]}\t{row[9]}\t{row[10]}\t{row[11]}\n"
-                )
-                with open(hits_m8_path, 'a') as f_out: # Append to existing file
-                    f_out.write(new_m8_line)
+                # For each chain that shares this sequence, create a template entry.
+                for query_chain_id in query_chain_ids:
+                    # Write the entry for Chai’s hits.m8 (query_id is the real chain ID)
+                    new_m8_line = (
+                        f"{query_chain_id}\t{subject_id}\t{row[2]}\t{row[3]}\t{row[4]}\t{row[5]}\t"
+                        f"{row[6]}\t{row[7]}\t{row[8]}\t{row[9]}\t{row[10]}\t{row[11]}\n"
+                    )
+                    with open(hits_m8_path, 'a') as f_out: # Append to existing file
+                        f_out.write(new_m8_line)
 
                     # Store for Boltz & AF3
                     export = TemplateExport(
                         pdb_id=pdb_id.lower(),
                         chain_id=template_chain_id,
-                        cif_path=single_chain_cif_path.resolve(),
+                        cif_path=str(single_chain_cif_path.resolve()),
                         query_idx_to_template_idx=mapping,
                         e_value=e_value,
-                        hit_from_chain=original_query_chain_id
+                        hit_from_chain=query_chain_id
                     )
                     all_exports.append(export)
+                
+                processed_template_names.add(subject_id)
             
             logger.info(f"Processed and kept {len(all_exports)} high-quality template hits from ColabFold.")
 
