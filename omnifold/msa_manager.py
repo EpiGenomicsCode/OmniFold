@@ -10,17 +10,31 @@ import pickle
 import hashlib
 import gzip
 import requests
-
-from .config_generator import ConfigGenerator
-from .util.definitions import JobInput, SequenceInfo
-from .util.file_converters import af3_json_to_chai_fasta, job_input_to_chai_fasta
-from .util.msa_utils import extract_all_protein_a3ms_from_af3_json # Import the utility
-from .util.template_export import TemplateExport
-from .util.template_aligner import template_seq_and_index, kalign_pair, build_mapping
+import pandas as pd
+from omnifold.util.template_aligner import template_seq_and_index, kalign_pair, build_mapping
 
 
 logger = logging.getLogger(__name__)
 
+
+def get_query_sequences(query_file: Path) -> dict[str, str]:
+    """Reads an AF3-style JSON and returns a chain_id -> sequence map."""
+    with open(query_file, 'r') as f:
+        query_data = json.load(f)
+    
+    query_sequences = {}
+    for entry in query_data.get("sequences", []):
+        protein_info = entry.get("protein", {})
+        if "id" in protein_info and "sequence" in protein_info:
+            chain_ids = protein_info["id"]
+            sequence = protein_info["sequence"]
+            if isinstance(chain_ids, list):
+                for chain_id in chain_ids:
+                    query_sequences[chain_id] = sequence
+            else: # Handle single string ID
+                query_sequences[chain_ids] = sequence
+                
+    return query_sequences
 
 class MSAManager:
     """
@@ -226,158 +240,126 @@ class MSAManager:
         all_exports: List[TemplateExport] = []
         
         try:
-            # Get query sequences to perform alignments
-            query_sequences = {seq.chain_id: seq.sequence for seq in self.job_input.sequences if seq.molecule_type == 'protein'}
+            # Load query sequences from the original AF3 input JSON.
+            query_sequences = get_query_sequences(Path(self.job_input.af3_json_path))
 
-            # The m8 file from colabfold has SHA1s. We need to map them back to chain IDs for Chai.
             msa_map_path = colabfold_output_dir / "msa_map.json"
-            if not msa_map_path.is_file():
-                logger.error(f"Could not find msa_map.json in {colabfold_output_dir}. Cannot remap template query IDs.")
-                return None
-            with open(msa_map_path, 'r') as f:
-                msa_map = json.load(f)
+            if not msa_map_path.exists():
+                logger.error(f"msa_map.json not found at {msa_map_path}, cannot process templates.")
+                return
             
-            # The PQT filename is the hash. We create a map from hash -> chain_id
-            hash_to_chain_id = {Path(pqt_path).stem.split('.')[0]: header.split('|')[0] for header, pqt_path in msa_map.items()}
-            logger.debug(f"Loaded {len(hash_to_chain_id)} chain hashes for template remapping.")
+            with open(msa_map_path, 'r') as f:
+                raw_msa_map = json.load(f)
 
-            with open(m8_file, 'r') as f_in, open(hits_m8_path, 'w') as f_out:
-                unique_pdb_ids = set()
-                num_hits_processed = 0
-                for line in f_in:
-                    cols = line.strip().split('\t')
-                    if len(cols) < 12:
-                        continue
-                    
-                    query_hash, subject_id, pident_str, length_str, mismatch, gapopen, qstart, qend, sstart, send, evalue_str, bitscore = cols[:12]
-                    
-                    chain_id_for_hit = hash_to_chain_id.get(query_hash)
-                    if not chain_id_for_hit:
-                        logger.warning(f"Could not find chain ID for template hit with query hash {query_hash}. Skipping.")
-                        continue
-                        
-                    pdb_id, template_chain_id = subject_id.split('_')
-                    unique_pdb_ids.add(pdb_id.lower())
+            # Build the correct mapping from hash to original chain ID
+            chain_id_map = {}
+            for key, value in raw_msa_map.items():
+                original_chain_id = key.split('|')[0]
+                pqt_path = Path(value)
+                file_hash = pqt_path.stem.split('.')[0]
+                chain_id_map[file_hash] = original_chain_id
+            
+            logger.info(f"Built chain ID map: {chain_id_map}")
 
-                    # --- New Alignment Logic ---
-                    # Define file paths
-                    full_cif_path = pdb_dir / f"{pdb_id.lower()}.cif"
-                    single_chain_cif_path = pdb_dir / f"{pdb_id.lower()}_{template_chain_id}.cif"
+            template_hits = pd.read_csv(m8_file, sep='\t', header=None)
+            
+            for index, row in template_hits.iterrows():
+                query_id = row[0]
+                subject_id = row[1]
+                pdb_id, template_chain_id = subject_id.split('_')
+                
+                logger.info(f"--- Hit {index+1}/{len(template_hits)}: Query={query_id}, Template={subject_id} ---")
 
-                    # Download the full mmCIF if we don't already have it
-                    if not full_cif_path.is_file():
-                        url = f"https://files.rcsb.org/download/{pdb_id.lower()}.cif"
-                        try:
-                            response = requests.get(url, timeout=30)
-                            response.raise_for_status()
-                            import gzip, io
-                            raw_bytes = response.content
-                            # If the server sent gzipped data but with .cif name, detect and decompress
-                            if raw_bytes[:2] == b"\x1f\x8b":
-                                try:
-                                    raw_bytes = gzip.decompress(raw_bytes)
-                                except OSError:
-                                    pass  # not valid gzip after all
-
-                            # --- Sanity-check that we actually got an mmCIF ---
-                            # A valid mmCIF ALWAYS starts with a data_ block name.
-                            trimmed = raw_bytes.lstrip()  # drop leading whitespace/newlines
-                            if not trimmed.lower().startswith(b"data_"):
-                                snippet = trimmed[:40].replace(b"\n", b" ")
-                                logger.warning(
-                                    f"Download for {pdb_id.lower()}.cif does not look like CIF; "
-                                    f"starts with {snippet!r}. Skipping this template.")
-                                continue  # skip this hit entirely
-
-                            clean_bytes = bytes((b if b < 0x80 else 0x3F) for b in raw_bytes)
-
-                            # --- Robust atomic write to bypass potential NFS caching issues ---
-                            import tempfile
-                            import os
-                            temp_fd, temp_path_str = -1, ""
-                            try:
-                                temp_fd, temp_path_str = tempfile.mkstemp(
-                                    dir=full_cif_path.parent, 
-                                    prefix=f"{pdb_id.lower()}_", 
-                                    suffix=".tmp"
-                                )
-                                with os.fdopen(temp_fd, 'wb') as f_temp:
-                                    temp_fd = -1  # fd is now managed by the file object
-                                    f_temp.write(clean_bytes)
-                                    f_temp.flush()
-                                    os.fsync(f_temp.fileno())  # Force write to disk
-
-                                # Atomically move the file to its final destination
-                                os.rename(temp_path_str, full_cif_path)
-                                temp_path_str = "" # Prevent cleanup
-                            finally:
-                                # Cleanup in case of error
-                                if temp_fd != -1:
-                                    os.close(temp_fd)
-                                if temp_path_str and os.path.exists(temp_path_str):
-                                    os.unlink(temp_path_str)
-                            # --- End robust write ---
-
-                            logger.info(
-                                f"Saved mmCIF {full_cif_path.name} (chain extraction pending) – {len(clean_bytes)} bytes"
-                            )
-                        except requests.exceptions.RequestException as e:
-                            logger.warning(f"Failed to download {url}: {e}. Skipping template {subject_id}.")
-                            continue
-
-                    # Extract the single chain into its own mmCIF (AF3 requires one chain per file)
-                    if not single_chain_cif_path.is_file():
-                        try:
-                            import gemmi
-                            st = gemmi.read_structure(str(full_cif_path))
-                            model = st[0]
-
-                            chains_to_remove = [ch.name for ch in model if ch.name != template_chain_id]
-
-                            if len(chains_to_remove) == len(model):
-                                raise ValueError(f"Chain {template_chain_id} not found in {full_cif_path}")
-
-                            for chain_name in chains_to_remove:
-                                model.remove_chain(chain_name)
-
-                            # Correct two-step process: make a document, then write it.
-                            doc = st.make_mmcif_document()
-                            doc.write_file(str(single_chain_cif_path))
-
-                            logger.info(f"Successfully extracted chain {template_chain_id} to {single_chain_cif_path.name}")
-
-                        except (ValueError, RuntimeError) as e:
-                            logger.warning(f"Failed to extract chain {template_chain_id} from {full_cif_path}: {e}. Skipping template {subject_id}.")
-                            continue
-
+                # Step 1: Download full CIF if it doesn't exist
+                full_cif_path = pdb_dir / f"{pdb_id.lower()}.cif"
+                if not full_cif_path.exists():
+                    rcsb_url = f"https://files.rcsb.org/download/{pdb_id}.cif"
+                    logger.info(f"Downloading template from {rcsb_url}")
                     try:
-                        query_sequence = query_sequences[chain_id_for_hit]
-                        template_sequence, t_seq_to_idx = template_seq_and_index(str(single_chain_cif_path), template_chain_id)
-
-                        # Align the full sequences to derive an exact mapping
-                        q_aln, t_aln = kalign_pair(query_sequence, template_sequence)
-                        q2t_map = build_mapping(q_aln, t_aln, t_seq_to_idx)
-
-                        # Quality filters
-                        identity = float(pident_str)
-                        coverage = len(q2t_map) / len(query_sequence)
-                        if coverage < 0.3 or identity < 20.0 or float(evalue_str) > 1e-3:
-                            logger.debug(
-                                f"Skipping low-quality template {subject_id} for chain {chain_id_for_hit} "
-                                f"(Coverage: {coverage:.2f}, Identity: {identity:.2f}, E-value: {evalue_str})"
-                            )
+                        response = requests.get(rcsb_url, timeout=60)
+                        response.raise_for_status()
+                        
+                        raw_bytes = response.content
+                        trimmed_bytes = raw_bytes.lstrip()
+                        if not trimmed_bytes.lower().startswith(b"data_"):
+                            logger.warning(f"Downloaded content for {pdb_id} does not look like a CIF file. Skipping.")
                             continue
-
-                    except Exception as e:
-                        logger.warning(f"Failed to process alignment for template {subject_id} for chain {chain_id_for_hit}: {e}")
+                        
+                        # Sanitize bytes and perform an atomic write
+                        clean_bytes = bytes((b if b < 0x80 else 0x3F) for b in raw_bytes)
+                        with tempfile.NamedTemporaryFile(dir=full_cif_path.parent, delete=False, mode='wb') as tmp_file:
+                            tmp_file.write(clean_bytes)
+                            tmp_file.flush()
+                            os.fsync(tmp_file.fileno())
+                        os.rename(tmp_file.name, full_cif_path)
+                        logger.info(f"Successfully downloaded and sanitized {full_cif_path.name}")
+                        
+                    except requests.exceptions.RequestException as e:
+                        logger.error(f"Failed to download {rcsb_url}: {e}")
                         continue
-                    # --- End Alignment Logic ---
 
-                    # Write the entry for Chai’s hits.m8 (query_id is the real chain ID, not the hash)
-                    new_m8_line = (
-                        f"{chain_id_for_hit}\t{subject_id}\t{pident_str}\t{length_str}\t{mismatch}\t{gapopen}\t"
-                        f"{qstart}\t{qend}\t{sstart}\t{send}\t{evalue_str}\t{bitscore}\n"
+                # Step 2: Extract single chain from CIF
+                single_chain_cif_path = pdb_dir / "single_chain" / f"{subject_id.lower()}.cif"
+                single_chain_cif_path.parent.mkdir(exist_ok=True)
+                
+                if not single_chain_cif_path.exists():
+                    logger.info(f"Extracting chain {template_chain_id} from {full_cif_path}")
+                    try:
+                        st = gemmi.read_structure(str(full_cif_path))
+                        if not st:
+                            raise ValueError("Structure is empty.")
+                        
+                        model_to_modify = st[0]
+                        chains_to_remove = [ch.name for ch in model_to_modify if ch.name != template_chain_id]
+
+                        if len(chains_to_remove) == len(model_to_modify):
+                            raise ValueError(f"Chain {template_chain_id} not found in {full_cif_path}")
+
+                        for chain_name in chains_to_remove:
+                            model_to_modify.remove_chain(chain_name)
+
+                        doc = st.make_mmcif_document()
+                        doc.write_file(str(single_chain_cif_path))
+                        logger.info(f"Successfully extracted chain {template_chain_id} to {single_chain_cif_path.name}")
+
+                    except (ValueError, RuntimeError, AttributeError) as e:
+                        logger.error(f"FAILED to extract chain for {subject_id}: {e}", exc_info=True)
+                        continue
+
+                # Step 3: Get query and template sequence
+                try:
+                    original_query_chain_id = chain_id_map.get(query_id)
+                    if not original_query_chain_id:
+                        logger.warning(f"Could not find original chain ID for query hash {query_id}. Skipping.")
+                        continue
+                    
+                    query_sequence = query_sequences[original_query_chain_id]
+                    template_sequence, t_seq_to_idx = template_seq_and_index(str(single_chain_cif_path), template_chain_id)
+                except Exception as e:
+                    logger.error(f"Failed to get template sequence for {subject_id}: {e}", exc_info=True)
+                    continue
+
+                # Align the full sequences to derive an exact mapping
+                q_aln, t_aln = kalign_pair(query_sequence, template_sequence)
+                q2t_map = build_mapping(q_aln, t_aln, t_seq_to_idx)
+
+                # Quality filters
+                identity = float(row[2]) # pident_str
+                coverage = len(q2t_map) / len(query_sequence)
+                evalue = float(row[10]) # evalue_str
+                if coverage < 0.3 or identity < 20.0 or evalue > 1e-3:
+                    logger.debug(
+                        f"Skipping low-quality template {subject_id} for chain {original_query_chain_id} "
+                        f"(Coverage: {coverage:.2f}, Identity: {identity:.2f}, E-value: {evalue})"
                     )
+                    continue
+
+                # Write the entry for Chai’s hits.m8 (query_id is the real chain ID, not the hash)
+                new_m8_line = (
+                    f"{original_query_chain_id}\t{subject_id}\t{row[2]}\t{row[3]}\t{row[4]}\t{row[5]}\t"
+                    f"{row[6]}\t{row[7]}\t{row[8]}\t{row[9]}\t{row[10]}\t{row[11]}\n"
+                )
+                with open(hits_m8_path, 'a') as f_out: # Append to existing file
                     f_out.write(new_m8_line)
 
                     # Store for Boltz & AF3
@@ -386,26 +368,12 @@ class MSAManager:
                         chain_id=template_chain_id,
                         cif_path=single_chain_cif_path.resolve(),
                         query_idx_to_template_idx=q2t_map,
-                        e_value=float(evalue_str),
-                        hit_from_chain=chain_id_for_hit
+                        e_value=evalue,
+                        hit_from_chain=original_query_chain_id
                     )
                     all_exports.append(export)
-                    num_hits_processed += 1
             
-            logger.info(f"Processed and kept {num_hits_processed} high-quality template hits from ColabFold.")
-
-            # Downloading is now handled within the loop
-            # logger.info(f"Fetching {len(unique_pdb_ids)} unique mmCIF files from RCSB.")
-            # for pdb_id in unique_pdb_ids:
-            #     cif_path = pdb_dir / f"{pdb_id}.cif"
-            #     if not cif_path.exists():
-            #         url = f"https://files.rcsb.org/download/{pdb_id}.cif"
-            #         try:
-            #             response = requests.get(url, timeout=30)
-            #             response.raise_for_status()
-            #             cif_path.write_text(response.text)
-            #         except requests.exceptions.RequestException as e:
-            #             logger.warning(f"Failed to download {url}: {e}")
+            logger.info(f"Processed and kept {len(all_exports)} high-quality template hits from ColabFold.")
 
             with open(mapping_pkl_path, "wb") as pkl_f:
                 pickle.dump(all_exports, pkl_f)

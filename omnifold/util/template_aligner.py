@@ -2,8 +2,11 @@ import gemmi
 import re
 import subprocess
 import tempfile
+import logging
 from pathlib import Path
 from typing import Dict, Tuple
+
+logger = logging.getLogger(__name__)
 
 TAGSET = [  # full tags – Gemmi’s Table takes *only* absolute names
     '_pdbx_poly_seq_scheme.mon_id',
@@ -18,27 +21,55 @@ FALLBACK = [  # older files → _entity_poly_seq
     '_entity_poly_seq.num',
 ]
 
+def build_mapping(aligned_query: str, aligned_template: str, q_start_offset: int = 0, t_start_offset: int = 0) -> Dict[int, int]:
+    """
+    Given two aligned sequences, build a mapping from query to template indices.
+    Accounts for an offset if sequence segments were aligned instead of full sequences.
+    """
+    mapping = {}
+    q_pos = 0
+    t_pos = 0
+    for q_char, t_char in zip(aligned_query, aligned_template):
+        q_gap = q_char == '-'
+        t_gap = t_char == '-'
+        
+        if not q_gap and not t_gap:
+            # Add offsets to map back to original full-sequence coordinates
+            mapping[q_pos + q_start_offset] = t_pos + t_start_offset
+        
+        if not q_gap:
+            q_pos += 1
+        if not t_gap:
+            t_pos += 1
+            
+    return mapping
+
+
 def template_seq_and_index(cif_path: str, chain_id: str) -> Tuple[str, Dict[int, int]]:
-    doc   = gemmi.cif.read_file(cif_path)
-    block = doc.sole_block()
+    st = gemmi.read_structure(cif_path)
+    if not st:
+        raise ValueError(f"Could not read structure from {cif_path}")
+    
+    # A structure can have multiple models, we'll work on the first one.
+    model = st[0]
+    chain = model.find_chain(chain_id)
+    if not chain:
+        raise ValueError(f"Chain {chain_id} not found in {cif_path}")
+        
+    polymer = chain.get_polymer()
+    if not polymer:
+        raise ValueError(f"Could not get polymer for chain {chain_id} in {cif_path}")
 
-    # choose the category present in this file
-    tags = TAGSET if block.find_value(TAGSET[0]) else FALLBACK
-    # gemmi.cif.Table expects the column tags as separate positional arguments,
-    # not as a single list. Unpack the list with *.
-    table = gemmi.cif.Table(block, *tags)
-
-    seq, mapping = "", {}
-    for row in table:
-        asym = row[1] or row[2]  # auth_asym_id first; fallback to asym_id/entity_id
-        if asym != chain_id:
-            continue
-        aa = gemmi.to_one_letter_code(row[0]) or 'X'
-        seq += aa
-        mapping[len(seq) - 1] = int(row[-1]) - 1  # 0-based for AF3
+    seq = polymer.make_one_letter_sequence()
+    
+    mapping = {}
+    for i, res in enumerate(polymer):
+        # res.seqid is gemmi.SeqId (num, ins_code), .num is what we need
+        # The API gives us 1-based index, we need 0-based for AF3
+        mapping[i] = res.seqid.num - 1
 
     if not seq:
-        raise ValueError(f"{chain_id} missing in {cif_path}")
+        raise ValueError(f"Chain {chain_id} missing or empty in {cif_path}")
 
     return seq, mapping
 
@@ -61,15 +92,3 @@ def kalign_pair(q_seq: str, t_seq: str) -> Tuple[str, str]:
     if not q_aln or not t_aln:
         raise RuntimeError("Kalign did not return aligned sequences")
     return q_aln, t_aln
-
-
-def build_mapping(q_aln: str, t_aln: str, t_seq_to_idx: Dict[int, int]) -> Dict[int, int]:
-    """Map alignment columns back to template indices."""
-    q2t   : Dict[int, int] = {}
-    qi = ti = -1
-    for qc, tc in zip(q_aln, t_aln):
-        if qc != "-": qi += 1
-        if tc != "-": ti += 1
-        if qc != "-" and tc != "-":
-            q2t[qi] = t_seq_to_idx[ti]    # noqa: E501
-    return q2t
