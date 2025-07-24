@@ -3,13 +3,15 @@ import os
 import subprocess
 import logging
 import tempfile # For temporary FASTA
+import gzip
+import io
+import requests
+import gemmi
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, List
 import sys # Added for sys.executable
 import pickle
 import hashlib
-import gzip
-import requests
 import pandas as pd
 from omnifold.util.template_aligner import template_seq_and_index, kalign_pair, build_mapping
 from omnifold.util.template_export import TemplateExport
