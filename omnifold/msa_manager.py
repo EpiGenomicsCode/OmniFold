@@ -270,7 +270,12 @@ class MSAManager:
                         try:
                             response = requests.get(url, timeout=30)
                             response.raise_for_status()
-                            full_cif_path.write_text(response.text)
+                            try:
+                                full_cif_path.write_text(response.text, encoding='utf-8')
+                            except UnicodeEncodeError:
+                                # fallback for unconventional encodings – re-encode via latin-1
+                                text_utf8 = response.content.decode('latin-1').encode('utf-8', errors='replace').decode('utf-8')
+                                full_cif_path.write_text(text_utf8, encoding='utf-8')
                         except requests.exceptions.RequestException as e:
                             logger.warning(f"Failed to download {url}: {e}. Skipping template {subject_id}.")
                             continue
