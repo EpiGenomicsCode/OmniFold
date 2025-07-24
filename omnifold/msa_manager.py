@@ -285,7 +285,7 @@ class MSAManager:
                             # Remove all chains except the one of interest
                             for ch in list(model):
                                 if ch.name != template_chain_id:
-                                    model.remove_chain(ch)
+                                    model.remove_chain(ch.name)
 
                             # Ensure we kept at least one chain
                             if len(model) == 0:
