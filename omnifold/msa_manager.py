@@ -356,11 +356,12 @@ class MSAManager:
                 
                 # Add a quality filter
                 coverage = len(mapping) / len(full_query_sequence)
-                evalue = float(row[10]) # evalue_str
-                if coverage < 0.3 or identity < 20.0 or evalue > 1e-3:
+                e_value = float(row[10]) # evalue_str
+                identity = float(row[2])
+                if coverage < 0.3 or identity < 0.20 or e_value > 1e-3:
                     logger.debug(
                         f"Skipping low-quality template {subject_id} for chain {original_query_chain_id} "
-                        f"(Coverage: {coverage:.2f}, Identity: {identity:.2f}, E-value: {evalue})"
+                        f"(Coverage: {coverage:.2f}, Identity: {identity:.2f}, E-value: {e_value})"
                     )
                     continue
 
@@ -378,7 +379,7 @@ class MSAManager:
                         chain_id=template_chain_id,
                         cif_path=single_chain_cif_path.resolve(),
                         query_idx_to_template_idx=mapping,
-                        e_value=evalue,
+                        e_value=e_value,
                         hit_from_chain=original_query_chain_id
                     )
                     all_exports.append(export)
