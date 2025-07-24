@@ -61,6 +61,24 @@ class ConfigGenerator:
                 af3_inference_filename = f"{job_input.name_stem}_af3_inference_from_a3m.json"
 
                 af3_config_path = self._generate_af3_json_from_job_input(job_input, config_output_dir, af3_inference_filename)
+                
+                # --- START OF FIX: Inject templates after generating the config ---
+                if af3_config_path and job_input.template_store_path:
+                    logger.info("Template store found. Injecting templates into the newly generated AF3 config.")
+                    # Load the generated config back into a dict to modify it
+                    with open(af3_config_path, 'r') as f:
+                        af3_config_dict = json.load(f)
+                    
+                    # The job_output_dir for the container is the parent of the configs dir
+                    container_job_output_dir = "/data/job_output"
+                    self._add_templates_to_af3_config(af3_config_dict, job_input, container_job_output_dir)
+                    
+                    # Write the modified config back to the file
+                    with open(af3_config_path, 'w') as f:
+                        json.dump(af3_config_dict, f, indent=2)
+                    logger.info(f"Successfully injected templates into {af3_config_path}")
+                # --- END OF FIX ---
+
                 if af3_config_path:
                     config_paths["af3_config_path"] = str(af3_config_path)
                     af3_config_generated_internally = True
