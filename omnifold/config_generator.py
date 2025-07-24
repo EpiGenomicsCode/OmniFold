@@ -69,9 +69,11 @@ class ConfigGenerator:
                     with open(af3_config_path, 'r') as f:
                         af3_config_dict = json.load(f)
                     
-                    # The job_output_dir for the container is the parent of the configs dir
+                    # The job_output_dir for the container is /data/job_output.
+                    # We need the host's job output directory to calculate the relative path.
                     container_job_output_dir = "/data/job_output"
-                    self._add_templates_to_af3_config(af3_config_dict, job_input, container_job_output_dir)
+                    job_output_root_host_dir = output_dir # This is the correct path
+                    self._add_templates_to_af3_config(af3_config_dict, job_input, container_job_output_dir, job_output_root_host_dir)
                     
                     # Write the modified config back to the file
                     with open(af3_config_path, 'w') as f:
@@ -348,7 +350,7 @@ class ConfigGenerator:
         
         return unique_boltz_templates
 
-    def _add_templates_to_af3_config(self, af3_config: Dict[str, Any], job_input: JobInput, container_job_output_dir: str):
+    def _add_templates_to_af3_config(self, af3_config: Dict[str, Any], job_input: JobInput, container_job_output_dir: str, job_output_root_host_dir: Path):
         """Injects template information into the AlphaFold 3 config."""
         if not job_input.template_store_path:
             return
@@ -371,7 +373,7 @@ class ConfigGenerator:
                 templates_by_chain[tpl.hit_from_chain] = []
             
             # Convert paths to be relative to the container's mount point
-            container_cif_path = Path(container_job_output_dir) / Path(tpl.cif_path).relative_to(Path(job_input.output_dir))
+            container_cif_path = Path(container_job_output_dir) / Path(tpl.cif_path).relative_to(job_output_root_host_dir)
 
             templates_by_chain[tpl.hit_from_chain].append({
                 "mmcifPath": str(container_cif_path),
