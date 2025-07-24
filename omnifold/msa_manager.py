@@ -260,30 +260,59 @@ class MSAManager:
                     unique_pdb_ids.add(pdb_id.lower())
 
                     # --- New Alignment Logic ---
-                    cif_path_str = str(pdb_dir / f"{pdb_id.lower()}.cif")
-                    if not Path(cif_path_str).is_file():
-                        # Download if not already fetched
+                    # Define file paths
+                    full_cif_path = pdb_dir / f"{pdb_id.lower()}.cif"
+                    single_chain_cif_path = pdb_dir / f"{pdb_id.lower()}_{template_chain_id}.cif"
+
+                    # Download the full mmCIF if we don't already have it
+                    if not full_cif_path.is_file():
                         url = f"https://files.rcsb.org/download/{pdb_id.lower()}.cif"
                         try:
                             response = requests.get(url, timeout=30)
                             response.raise_for_status()
-                            with open(cif_path_str, 'w') as f:
-                                f.write(response.text)
+                            full_cif_path.write_text(response.text)
                         except requests.exceptions.RequestException as e:
-                            logger.warning(f"Failed to download {url}: {e}. Skipping template.")
+                            logger.warning(f"Failed to download {url}: {e}. Skipping template {subject_id}.")
                             continue
-                    
+
+                    # Extract the single chain into its own mmCIF (AF3 requires one chain per file)
+                    if not single_chain_cif_path.is_file():
+                        try:
+                            import gemmi  # Local import to avoid heavy dependency at module import time
+                            st = gemmi.read_structure(str(full_cif_path))
+                            model = st[0]
+
+                            # Remove all chains except the one of interest
+                            for ch in list(model):
+                                if ch.name != template_chain_id:
+                                    model.remove_chain(ch)
+
+                            # Ensure we kept at least one chain
+                            if len(model) == 0:
+                                raise ValueError(f"Chain {template_chain_id} not found in {full_cif_path}")
+
+                            # Write the single-chain mmCIF
+                            st.write_cif(str(single_chain_cif_path))
+                        except Exception as e:
+                            logger.warning(f"Failed to extract chain {template_chain_id} from {full_cif_path}: {e}. Skipping template {subject_id}.")
+                            continue
+
                     try:
                         query_sequence = query_sequences[chain_id_for_hit]
-                        template_sequence, t_seq_to_idx = template_seq_and_index(cif_path_str, template_chain_id)
+                        template_sequence, t_seq_to_idx = template_seq_and_index(str(single_chain_cif_path), template_chain_id)
+
+                        # Align the full sequences to derive an exact mapping
                         q_aln, t_aln = kalign_pair(query_sequence, template_sequence)
                         q2t_map = build_mapping(q_aln, t_aln, t_seq_to_idx)
-                        
-                        # Quality Gate
+
+                        # Quality filters
                         identity = float(pident_str)
                         coverage = len(q2t_map) / len(query_sequence)
                         if coverage < 0.3 or identity < 20.0 or float(evalue_str) > 1e-3:
-                            logger.debug(f"Skipping low-quality template {subject_id} for chain {chain_id_for_hit} (Coverage: {coverage:.2f}, Identity: {identity:.2f}, E-value: {evalue_str})")
+                            logger.debug(
+                                f"Skipping low-quality template {subject_id} for chain {chain_id_for_hit} "
+                                f"(Coverage: {coverage:.2f}, Identity: {identity:.2f}, E-value: {evalue_str})"
+                            )
                             continue
 
                     except Exception as e:
@@ -291,15 +320,18 @@ class MSAManager:
                         continue
                     # --- End Alignment Logic ---
 
-                    # Write to Chai's hits.m8 file with the correct chain_id
-                    new_m8_line = f"{chain_id_for_hit}\t{subject_id}\t{pident_str}\t{length_str}\t{mismatch}\t{gapopen}\t{qstart}\t{qend}\t{sstart}\t{send}\t{evalue_str}\t{bitscore}\n"
+                    # Write the entry for Chai’s hits.m8 (query_id is the real chain ID, not the hash)
+                    new_m8_line = (
+                        f"{chain_id_for_hit}\t{subject_id}\t{pident_str}\t{length_str}\t{mismatch}\t{gapopen}\t"
+                        f"{qstart}\t{qend}\t{sstart}\t{send}\t{evalue_str}\t{bitscore}\n"
+                    )
                     f_out.write(new_m8_line)
 
-                    # Create TemplateExport for Boltz
+                    # Store for Boltz & AF3
                     export = TemplateExport(
                         pdb_id=pdb_id.lower(),
                         chain_id=template_chain_id,
-                        cif_path=Path(cif_path_str).resolve(),
+                        cif_path=single_chain_cif_path.resolve(),
                         query_idx_to_template_idx=q2t_map,
                         e_value=float(evalue_str),
                         hit_from_chain=chain_id_for_hit

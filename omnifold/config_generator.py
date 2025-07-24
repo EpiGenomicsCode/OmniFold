@@ -490,7 +490,7 @@ class ConfigGenerator:
         if boltz_templates:
             boltz_config["templates"] = boltz_templates
             logger.info(f"Added {len(boltz_templates)} template entries to Boltz config.")
-
+        
         try:
             with open(yaml_file_path, 'w') as f:
                 yaml.dump(boltz_config, f, sort_keys=False, Dumper=yaml.SafeDumper)
