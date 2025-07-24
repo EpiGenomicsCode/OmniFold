@@ -332,16 +332,15 @@ class MSAManager:
                             st = gemmi.read_structure(str(full_cif_path))
                             model = st[0]
 
-                            # Remove all chains except the one of interest
-                            for ch in list(model):
-                                if ch.name != template_chain_id:
-                                    model.remove_chain(ch.name)
+                            chains_to_remove = [ch.name for ch in model if ch.name != template_chain_id]
 
-                            # Ensure we kept at least one chain
-                            if len(model) == 0:
+                            if len(chains_to_remove) == len(model):
                                 raise ValueError(f"Chain {template_chain_id} not found in {full_cif_path}")
 
-                            # Write the single-chain mmCIF
+                            for chain_name in chains_to_remove:
+                                model.remove_chain(chain_name)
+
+                            # Write the single-chain mmCIF using the correct method
                             st.write_cif(str(single_chain_cif_path))
                         except Exception as e:
                             logger.warning(f"Failed to extract chain {template_chain_id} from {full_cif_path}: {e}. Skipping template {subject_id}.")
