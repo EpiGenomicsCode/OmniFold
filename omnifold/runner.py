@@ -234,16 +234,25 @@ class Runner:
             if chai_device_arg:
                 model_command.extend(["--device", chai_device_arg])
 
+            # The main job directory is already mounted. We just need to construct the correct
+            # paths inside the container for Chai-1 to use.
             template_store_host = self.config.get("template_store_path")
             if template_store_host and os.path.isdir(template_store_host):
-                container_template_store = f"{container_job_output_root}/templates"
-                binds[template_store_host] = f"{container_template_store}:ro"
+                # The container path is relative to the main job output mount.
+                container_template_store = str(Path(container_job_output_root) / Path(template_store_host).relative_to(job_output_root_host_path))
                 
-                # Set the environment variable specifically for Chai-1 to find the CIFs
+                # Set the environment variable for Chai-1 to find the CIFs
                 extra_env["CHAI_TEMPLATE_CIF_FOLDER"] = f"{container_template_store}/pdb"
                 
-                container_m8_path = f"{container_template_store}/hits.m8"
-                model_command.extend(["--template-hits-path", container_m8_path])
+                host_m8_path = Path(template_store_host) / "hits.m8"
+                if host_m8_path.is_file():
+                    container_m8_path = f"{container_template_store}/hits.m8"
+                    model_command.extend(["--template-hits-path", container_m8_path])
+                    logger.info(f"Found template hits file at {host_m8_path}, adding to Chai-1 command.")
+                else:
+                    logger.info(f"Template store provided, but hits.m8 not found at {host_m8_path}. Running Chai-1 without templates.")
+            else:
+                 logger.info("No template store provided. Running Chai-1 without templates.")
 
         else:
             return -1, "", f"Unsupported model_name: {model_name}"
