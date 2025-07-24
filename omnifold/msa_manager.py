@@ -311,46 +311,51 @@ class MSAManager:
                     logger.info(f"Extracting chain {template_chain_id} from {full_cif_path}")
                     try:
                         st = gemmi.read_structure(str(full_cif_path))
-                        if not st:
-                            raise ValueError("Structure is empty.")
-                        
                         model_to_modify = st[0]
                         chains_to_remove = [ch.name for ch in model_to_modify if ch.name != template_chain_id]
-
                         if len(chains_to_remove) == len(model_to_modify):
-                            raise ValueError(f"Chain {template_chain_id} not found in {full_cif_path}")
-
+                            raise ValueError(f"Chain {template_chain_id} not found")
                         for chain_name in chains_to_remove:
                             model_to_modify.remove_chain(chain_name)
-
                         doc = st.make_mmcif_document()
                         doc.write_file(str(single_chain_cif_path))
                         logger.info(f"Successfully extracted chain {template_chain_id} to {single_chain_cif_path.name}")
-
                     except (ValueError, RuntimeError, AttributeError) as e:
-                        logger.error(f"FAILED to extract chain for {subject_id}: {e}", exc_info=True)
+                        logger.error(f"Failed to extract chain for {subject_id}: {e}", exc_info=True)
                         continue
 
-                # Step 3: Get query and template sequence
-                try:
-                    original_query_chain_id = chain_id_map.get(query_id)
-                    if not original_query_chain_id:
-                        logger.warning(f"Could not find original chain ID for query hash {query_id}. Skipping.")
-                        continue
-                    
-                    query_sequence = query_sequences[original_query_chain_id]
-                    template_sequence, t_seq_to_idx = template_seq_and_index(str(single_chain_cif_path), template_chain_id)
-                except Exception as e:
-                    logger.error(f"Failed to get template sequence for {subject_id}: {e}", exc_info=True)
+                full_template_sequence, _ = template_seq_and_index(str(single_chain_cif_path), template_chain_id)
+                
+                # Get the full query sequence from the original job_input
+                original_query_chain_id = chain_id_map.get(query_id)
+                if not original_query_chain_id:
+                    logger.warning(f"Could not find original chain ID for query hash {query_id}. Skipping.")
+                    continue
+                
+                full_query_sequence = query_sequences[original_query_chain_id]
+
+                # Calculate 1-based coordinates for the full sequences
+                q_start = 1 # Start of the query segment
+                q_end = len(full_query_sequence) # End of the query segment
+                t_start = 1 # Start of the template segment
+                t_end = len(full_template_sequence) # End of the template segment
+
+                query_segment = full_query_sequence[q_start:q_end]
+                template_segment = full_template_sequence[t_start:t_end]
+
+                if not query_segment or not template_segment:
+                    logger.warning(f"Empty query or template segment for {subject_id}, skipping.")
                     continue
 
-                # Align the full sequences to derive an exact mapping
-                q_aln, t_aln = kalign_pair(query_sequence, template_sequence)
-                q2t_map = build_mapping(q_aln, t_aln, t_seq_to_idx)
+                q_aln, t_aln = kalign_pair(query_segment, template_segment)
+                mapping = build_mapping(q_aln, t_aln, q_start_offset=q_start, t_start_offset=t_start)
 
-                # Quality filters
-                identity = float(row[2]) # pident_str
-                coverage = len(q2t_map) / len(query_sequence)
+                if not mapping:
+                    logger.warning(f"Could not generate alignment mapping for {subject_id}")
+                    continue
+                
+                # Add a quality filter
+                coverage = len(mapping) / len(full_query_sequence)
                 evalue = float(row[10]) # evalue_str
                 if coverage < 0.3 or identity < 20.0 or evalue > 1e-3:
                     logger.debug(
@@ -372,7 +377,7 @@ class MSAManager:
                         pdb_id=pdb_id.lower(),
                         chain_id=template_chain_id,
                         cif_path=single_chain_cif_path.resolve(),
-                        query_idx_to_template_idx=q2t_map,
+                        query_idx_to_template_idx=mapping,
                         e_value=evalue,
                         hit_from_chain=original_query_chain_id
                     )
