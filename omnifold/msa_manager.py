@@ -329,11 +329,12 @@ class MSAManager:
                 if not single_chain_cif_path.exists():
                     logger.info(f"Extracting chain {template_chain_id} from {full_cif_path}.")
                     try:
-                        # Step A: Extract just the atomic data for the desired chain.
-                        # This method is reliable for getting the atoms but strips most header info.
+                        # Step A: Read the original structure to get atomic data and header info
+                        original_doc = gemmi.cif.read_file(str(full_cif_path))
+                        original_block = original_doc.sole_block()
                         st = gemmi.read_structure(str(full_cif_path))
-                        
-                        # Find the model and chain to keep
+
+                        # Find the specific chain to keep
                         chain_to_keep = None
                         for model in st:
                             for chain in model:
@@ -347,32 +348,40 @@ class MSAManager:
                             available_chains = sorted(list(set(ch.name for m in st for ch in m)))
                             raise ValueError(f"Chain '{template_chain_id}' not found in '{full_cif_path}'. Available chains: {available_chains}")
 
-                        # Create a new structure with only the desired chain
+                        # Step B: Create a new, clean document and structure
+                        new_doc = gemmi.cif.Document()
+                        new_block = new_doc.add_new_block(st.name)
                         new_st = gemmi.Structure()
                         new_st.cell = st.cell
                         new_model = gemmi.Model('1')
                         new_model.add_chain(chain_to_keep)
                         new_st.add_model(new_model)
-                        
-                        # Write this to a temporary file, which will have a minimal header
-                        temp_doc = new_st.make_mmcif_document()
-                        temp_doc.write_file(str(single_chain_cif_path))
-                        
-                        # Step B: Inject the required _pdbx_database_status loop from the original file.
-                        original_doc = gemmi.cif.read_file(str(full_cif_path))
-                        original_block = original_doc.sole_block()
+
+                        # Step C: Add the structure to the new block to generate atom_site
+                        gemmi.cif.add_structure_to_block(new_st, new_block)
+
+                        # Step D: Manually copy the release date information
                         status_loop = original_block.find_loop('_pdbx_database_status.pdb_id')
+                        rev_loop = original_block.find_loop('_database_PDB_rev.num')
                         
                         if status_loop:
-                            # Read the file we just wrote and add the loop to its block
-                            final_doc = gemmi.cif.read_file(str(single_chain_cif_path))
-                            final_block = final_doc.sole_block()
-                            final_block.add_item(status_loop)
-                            # Overwrite the file with the version that has the release date
-                            final_doc.write_file(str(single_chain_cif_path))
-                            logger.info(f"Successfully extracted chain and injected release date into {single_chain_cif_path.name}")
+                            new_block.add_item(status_loop)
+                            logger.info("Copied _pdbx_database_status loop.")
+                        elif rev_loop:
+                            # Fallback for older entries: find the original deposition date
+                            date_col = rev_loop.find_column('_database_PDB_rev.date_original')
+                            if date_col and len(date_col) > 0:
+                                release_date = date_col[0]
+                                # Create a minimal _pdbx_database_status loop
+                                loop = new_block.init_loop('_pdbx_database_status.', ['pdb_id', 'release_date'])
+                                loop.add_row([st.name, release_date])
+                                logger.info(f"Created fallback _pdbx_database_status with release_date: {release_date}")
                         else:
-                            logger.warning(f"Could not find '_pdbx_database_status' loop in {full_cif_path}. Release date may be missing.")
+                             logger.warning(f"Could not find any release date info in {full_cif_path}. Template may fail in AF3.")
+
+                        # Step E: Write the new, clean document
+                        new_doc.write_file(str(single_chain_cif_path))
+                        logger.info(f"Successfully extracted chain {template_chain_id} to {single_chain_cif_path.name}")
 
                     except (ValueError, RuntimeError, AttributeError) as e:
                         logger.error(f"Failed to extract chain for {subject_id}: {e}", exc_info=True)
