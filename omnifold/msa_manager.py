@@ -328,27 +328,21 @@ class MSAManager:
                     # Extract the single chain into its own mmCIF (AF3 requires one chain per file)
                     if not single_chain_cif_path.is_file():
                         try:
-                            import gemmi  # Local import to avoid heavy dependency at module import time
-                            # --- BEGIN DIAGNOSTIC PRINTS ---
-                            print(f"DEBUG: Attempting to use gemmi version {gemmi.__version__}", file=sys.stderr)
-                            print(f"DEBUG: Gemmi module loaded from: {gemmi.__file__}", file=sys.stderr)
-                            # --- END DIAGNOSTIC PRINTS ---
+                            import gemmi
                             st = gemmi.read_structure(str(full_cif_path))
-                            print(f"DEBUG: Type of object returned by read_structure: {type(st)}", file=sys.stderr)
-                            
-                            try:
-                                model = st[0]
-                                chains_to_remove = [ch.name for ch in model if ch.name != template_chain_id]
-                                if len(chains_to_remove) == len(model):
-                                    raise ValueError(f"Chain {template_chain_id} not found in {full_cif_path}")
-                                for chain_name in chains_to_remove:
-                                    model.remove_chain(chain_name)
-                                st.write_cif(str(single_chain_cif_path))
-                            except AttributeError as e:
-                                print(f"FATAL: Caught AttributeError: {e}", file=sys.stderr)
-                                print(f"FATAL: Inspecting methods and attributes of the 'st' object (type: {type(st)}):", file=sys.stderr)
-                                print(dir(st), file=sys.stderr)
-                                raise e # Re-raise the exception after printing debug info
+                            model = st[0]
+
+                            chains_to_remove = [ch.name for ch in model if ch.name != template_chain_id]
+
+                            if len(chains_to_remove) == len(model):
+                                raise ValueError(f"Chain {template_chain_id} not found in {full_cif_path}")
+
+                            for chain_name in chains_to_remove:
+                                model.remove_chain(chain_name)
+
+                            # Correct two-step process: make a document, then write it.
+                            doc = st.make_mmcif_document()
+                            doc.write_file(str(single_chain_cif_path))
 
                             logger.info(f"Successfully extracted chain {template_chain_id} to {single_chain_cif_path.name}")
 
