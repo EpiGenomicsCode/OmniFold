@@ -329,6 +329,10 @@ class MSAManager:
                     if not single_chain_cif_path.is_file():
                         try:
                             import gemmi  # Local import to avoid heavy dependency at module import time
+                            # --- BEGIN DIAGNOSTIC PRINTS ---
+                            print(f"DEBUG: Attempting to use gemmi version {gemmi.__version__}", file=sys.stderr)
+                            print(f"DEBUG: Gemmi module loaded from: {gemmi.__file__}", file=sys.stderr)
+                            # --- END DIAGNOSTIC PRINTS ---
                             st = gemmi.read_structure(str(full_cif_path))
                             model = st[0]
 
