@@ -279,12 +279,25 @@ class MSAManager:
                                 except OSError:
                                     pass  # not valid gzip after all
 
+                            # --- Sanity-check that we actually got an mmCIF ---
+                            # A valid mmCIF ALWAYS starts with a data_ block name.
+                            trimmed = raw_bytes.lstrip()  # drop leading whitespace/newlines
+                            if not trimmed.lower().startswith(b"data_"):
+                                snippet = trimmed[:40].replace(b"\n", b" ")
+                                logger.warning(
+                                    f"Download for {pdb_id.lower()}.cif does not look like CIF; "
+                                    f"starts with {snippet!r}. Skipping this template.")
+                                continue  # skip this hit entirely
+
+                            # Decode bytes – prefer UTF-8, fall back to Latin-1 with replacement.
                             try:
                                 text = raw_bytes.decode("utf-8")
                             except UnicodeDecodeError:
                                 text = raw_bytes.decode("latin-1", errors="replace")
 
                             full_cif_path.write_text(text, encoding="utf-8")
+                            logger.info(
+                                f"Saved mmCIF {full_cif_path.name} (chain extraction pending) – {len(text)} bytes")
                         except requests.exceptions.RequestException as e:
                             logger.warning(f"Failed to download {url}: {e}. Skipping template {subject_id}.")
                             continue
