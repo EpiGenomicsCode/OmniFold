@@ -301,7 +301,7 @@ class MSAManager:
                             with open(full_cif_path, "wb") as f_out:
                                 f_out.write(clean_bytes)
                             logger.info(
-                                f"Saved mmCIF {full_cif_path.name} (chain extraction pending) – {len(text)} bytes")
+                                f"Saved mmCIF {full_cif_path.name} (chain extraction pending) – {len(clean_bytes)} bytes")
                         except requests.exceptions.RequestException as e:
                             logger.warning(f"Failed to download {url}: {e}. Skipping template {subject_id}.")
                             continue
