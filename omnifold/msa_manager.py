@@ -327,17 +327,18 @@ class MSAManager:
                 single_chain_cif_path.parent.mkdir(exist_ok=True)
                 
                 if not single_chain_cif_path.exists():
-                    logger.info(f"Extracting chain {template_chain_id} from {full_cif_path}")
+                    logger.info(f"Extracting chain {template_chain_id} from {full_cif_path} while preserving header.")
                     try:
-                        st = gemmi.read_structure(str(full_cif_path))
-                        model_to_modify = st[0]
-                        chains_to_remove = [ch.name for ch in model_to_modify if ch.name != template_chain_id]
-                        if len(chains_to_remove) == len(model_to_modify):
-                            raise ValueError(f"Chain {template_chain_id} not found")
-                        for chain_name in chains_to_remove:
-                            model_to_modify.remove_chain(chain_name)
-                        doc = st.make_mmcif_document()
-                        doc.write_file(str(single_chain_cif_path))
+                        doc = gemmi.cif.read_file(str(full_cif_path))
+                        block = doc.sole_block()
+                        # Check if chain exists before filtering to provide a better error.
+                        auth_asym_id_list = block.find_values('_atom_site.auth_asym_id')
+                        if template_chain_id not in auth_asym_id_list:
+                            available_chains = sorted(list(set(auth_asym_id_list)))
+                            raise ValueError(f"Chain '{template_chain_id}' not found in '{full_cif_path}'. Available chains: {available_chains}")
+
+                        new_doc = gemmi.cif.filter_chains(doc, [template_chain_id])
+                        new_doc.write_file(str(single_chain_cif_path))
                         logger.info(f"Successfully extracted chain {template_chain_id} to {single_chain_cif_path.name}")
                     except (ValueError, RuntimeError, AttributeError) as e:
                         logger.error(f"Failed to extract chain for {subject_id}: {e}", exc_info=True)
