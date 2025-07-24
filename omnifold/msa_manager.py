@@ -327,19 +327,53 @@ class MSAManager:
                 single_chain_cif_path.parent.mkdir(exist_ok=True)
                 
                 if not single_chain_cif_path.exists():
-                    logger.info(f"Extracting chain {template_chain_id} from {full_cif_path} while preserving header.")
+                    logger.info(f"Extracting chain {template_chain_id} from {full_cif_path}.")
                     try:
-                        doc = gemmi.cif.read_file(str(full_cif_path))
-                        block = doc.sole_block()
-                        # Check if chain exists before filtering to provide a better error.
-                        auth_asym_id_list = block.find_values('_atom_site.auth_asym_id')
-                        if template_chain_id not in auth_asym_id_list:
-                            available_chains = sorted(list(set(auth_asym_id_list)))
+                        # Step A: Extract just the atomic data for the desired chain.
+                        # This method is reliable for getting the atoms but strips most header info.
+                        st = gemmi.read_structure(str(full_cif_path))
+                        
+                        # Find the model and chain to keep
+                        chain_to_keep = None
+                        for model in st:
+                            for chain in model:
+                                if chain.name == template_chain_id:
+                                    chain_to_keep = chain.clone()
+                                    break
+                            if chain_to_keep:
+                                break
+                        
+                        if not chain_to_keep:
+                            available_chains = sorted(list(set(ch.name for m in st for ch in m)))
                             raise ValueError(f"Chain '{template_chain_id}' not found in '{full_cif_path}'. Available chains: {available_chains}")
 
-                        new_doc = gemmi.cif.filter_chains(doc, [template_chain_id])
-                        new_doc.write_file(str(single_chain_cif_path))
-                        logger.info(f"Successfully extracted chain {template_chain_id} to {single_chain_cif_path.name}")
+                        # Create a new structure with only the desired chain
+                        new_st = gemmi.Structure()
+                        new_st.cell = st.cell
+                        new_model = gemmi.Model('1')
+                        new_model.add_chain(chain_to_keep)
+                        new_st.add_model(new_model)
+                        
+                        # Write this to a temporary file, which will have a minimal header
+                        temp_doc = new_st.make_mmcif_document()
+                        temp_doc.write_file(str(single_chain_cif_path))
+                        
+                        # Step B: Inject the required _pdbx_database_status loop from the original file.
+                        original_doc = gemmi.cif.read_file(str(full_cif_path))
+                        original_block = original_doc.sole_block()
+                        status_loop = original_block.find_loop('_pdbx_database_status.pdb_id')
+                        
+                        if status_loop:
+                            # Read the file we just wrote and add the loop to its block
+                            final_doc = gemmi.cif.read_file(str(single_chain_cif_path))
+                            final_block = final_doc.sole_block()
+                            final_block.add_item(status_loop)
+                            # Overwrite the file with the version that has the release date
+                            final_doc.write_file(str(single_chain_cif_path))
+                            logger.info(f"Successfully extracted chain and injected release date into {single_chain_cif_path.name}")
+                        else:
+                            logger.warning(f"Could not find '_pdbx_database_status' loop in {full_cif_path}. Release date may be missing.")
+
                     except (ValueError, RuntimeError, AttributeError) as e:
                         logger.error(f"Failed to extract chain for {subject_id}: {e}", exc_info=True)
                         continue
@@ -375,7 +409,6 @@ class MSAManager:
                     logger.warning(f"Could not generate alignment mapping for {subject_id}")
                     continue
                 
-                # Add a quality filter
                 coverage = len(mapping) / len(full_query_sequence)
                 e_value = float(row[10]) # evalue_str
                 identity = float(row[2])
