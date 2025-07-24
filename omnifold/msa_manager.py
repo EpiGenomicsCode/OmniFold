@@ -334,6 +334,7 @@ class MSAManager:
                             print(f"DEBUG: Gemmi module loaded from: {gemmi.__file__}", file=sys.stderr)
                             # --- END DIAGNOSTIC PRINTS ---
                             st = gemmi.read_structure(str(full_cif_path))
+                            print(f"DEBUG: Type of object returned by read_structure: {type(st)}", file=sys.stderr)
                             model = st[0]
 
                             chains_to_remove = [ch.name for ch in model if ch.name != template_chain_id]
