@@ -24,7 +24,9 @@ def template_seq_and_index(cif_path: str, chain_id: str) -> Tuple[str, Dict[int,
 
     # choose the category present in this file
     tags = TAGSET if block.find_value(TAGSET[0]) else FALLBACK
-    table = gemmi.cif.Table(block, tags)          # ← corrected signature
+    # gemmi.cif.Table expects the column tags as separate positional arguments,
+    # not as a single list. Unpack the list with *.
+    table = gemmi.cif.Table(block, *tags)
 
     seq, mapping = "", {}
     for row in table:
