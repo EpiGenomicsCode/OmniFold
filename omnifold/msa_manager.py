@@ -244,7 +244,7 @@ class MSAManager:
         
         try:
             # Load query sequences from the original AF3 input JSON.
-            query_sequences = get_query_sequences(Path(self.job_input.af3_json_path))
+            query_sequences = get_query_sequences(Path(self.job_input.original_af3_config_path))
 
             msa_map_path = colabfold_output_dir / "msa_map.json"
             if not msa_map_path.exists():
