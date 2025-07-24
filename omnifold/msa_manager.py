@@ -266,9 +266,13 @@ class MSAManager:
             
             logger.info(f"Built chain ID map: {chain_id_map}")
 
-            template_hits = pd.read_csv(m8_file, sep='\t', header=None)
+            template_hits = pd.read_csv(m8_file, sep='\\t', header=None)
             
-            for index, row in template_hits.iterrows():
+            # Sort by E-value (col 10) and take top 4 for each query hash (col 0)
+            top_templates = template_hits.sort_values(by=10, ascending=True).groupby(0).head(4)
+            logger.info(f"Filtered to top {len(top_templates)} templates.")
+
+            for index, row in top_templates.iterrows():
                 query_id = row[0]
                 subject_id = row[1]
                 pdb_id, template_chain_id = subject_id.split('_')
