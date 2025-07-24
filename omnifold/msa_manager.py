@@ -270,9 +270,21 @@ class MSAManager:
                         try:
                             response = requests.get(url, timeout=30)
                             response.raise_for_status()
-                            # Write raw bytes to preserve original encoding and avoid decode errors
-                            with open(full_cif_path, 'wb') as f_out:
-                                f_out.write(response.content)
+                            import gzip, io
+                            raw_bytes = response.content
+                            # If the server sent gzipped data but with .cif name, detect and decompress
+                            if raw_bytes[:2] == b"\x1f\x8b":
+                                try:
+                                    raw_bytes = gzip.decompress(raw_bytes)
+                                except OSError:
+                                    pass  # not valid gzip after all
+
+                            try:
+                                text = raw_bytes.decode("utf-8")
+                            except UnicodeDecodeError:
+                                text = raw_bytes.decode("latin-1", errors="replace")
+
+                            full_cif_path.write_text(text, encoding="utf-8")
                         except requests.exceptions.RequestException as e:
                             logger.warning(f"Failed to download {url}: {e}. Skipping template {subject_id}.")
                             continue
