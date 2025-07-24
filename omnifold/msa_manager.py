@@ -295,7 +295,11 @@ class MSAManager:
                             except UnicodeDecodeError:
                                 text = raw_bytes.decode("latin-1", errors="replace")
 
-                            full_cif_path.write_text(text, encoding="utf-8")
+                            # Gemmi expects strictly ASCII mmCIF; replace any non-ASCII chars
+                            import re
+                            ascii_text = re.sub(r"[^\x00-\x7F]", "?", text)
+
+                            full_cif_path.write_text(ascii_text, encoding="ascii")
                             logger.info(
                                 f"Saved mmCIF {full_cif_path.name} (chain extraction pending) – {len(text)} bytes")
                         except requests.exceptions.RequestException as e:
