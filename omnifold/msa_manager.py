@@ -289,19 +289,38 @@ class MSAManager:
                                     f"starts with {snippet!r}. Skipping this template.")
                                 continue  # skip this hit entirely
 
-                            # --- Byte-level sanitisation: replace every byte >0x7F with '?'
-                            raw_head = raw_bytes[:32]
                             clean_bytes = bytes((b if b < 0x80 else 0x3F) for b in raw_bytes)
-                            clean_head = clean_bytes[:32]
 
-                            logger.debug(
-                                f"{pdb_id.lower()}.cif head (raw→clean): "
-                                f"{raw_head.hex()} -> {clean_head.hex()}")
+                            # --- Robust atomic write to bypass potential NFS caching issues ---
+                            import tempfile
+                            import os
+                            temp_fd, temp_path_str = -1, ""
+                            try:
+                                temp_fd, temp_path_str = tempfile.mkstemp(
+                                    dir=full_cif_path.parent, 
+                                    prefix=f"{pdb_id.lower()}_", 
+                                    suffix=".tmp"
+                                )
+                                with os.fdopen(temp_fd, 'wb') as f_temp:
+                                    temp_fd = -1  # fd is now managed by the file object
+                                    f_temp.write(clean_bytes)
+                                    f_temp.flush()
+                                    os.fsync(f_temp.fileno())  # Force write to disk
 
-                            with open(full_cif_path, "wb") as f_out:
-                                f_out.write(clean_bytes)
+                                # Atomically move the file to its final destination
+                                os.rename(temp_path_str, full_cif_path)
+                                temp_path_str = "" # Prevent cleanup
+                            finally:
+                                # Cleanup in case of error
+                                if temp_fd != -1:
+                                    os.close(temp_fd)
+                                if temp_path_str and os.path.exists(temp_path_str):
+                                    os.unlink(temp_path_str)
+                            # --- End robust write ---
+
                             logger.info(
-                                f"Saved mmCIF {full_cif_path.name} (chain extraction pending) – {len(clean_bytes)} bytes")
+                                f"Saved mmCIF {full_cif_path.name} (chain extraction pending) – {len(clean_bytes)} bytes"
+                            )
                         except requests.exceptions.RequestException as e:
                             logger.warning(f"Failed to download {url}: {e}. Skipping template {subject_id}.")
                             continue
