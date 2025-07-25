@@ -68,7 +68,7 @@ if dist_cutoff<10: dist_string="0"+dist_string
 
 #pae_AURKA_TPX2_model_0.npz
 
-if ".pdb" in pdb_path:
+if pdb_path.lower().endswith('.pdb'):
     pdb_stem=os.path.basename(pdb_path).replace(".pdb","")
     path_stem =     f'{pdb_stem}_{pae_string}_{dist_string}'
     af2 =    True
@@ -76,7 +76,7 @@ if ".pdb" in pdb_path:
     boltz1 = False
     chai1 =  False
     cif =    False
-elif ".cif" in pdb_path:
+elif pdb_path.lower().endswith('.cif'):
     pdb_stem=os.path.basename(pdb_path).replace(".cif","")
     path_stem =     f'{pdb_stem}_{pae_string}_{dist_string}'
     cif = True
@@ -358,11 +358,14 @@ with open(pdb_path, 'r') as PDB:
             atomsitefield_num += 1
             
         if line.startswith("ATOM") or line.startswith("HETATM"):
+            # Choose the correct parser depending on the input format.
             if cif:
-                atom=parse_cif_atom_line(line, atomsitefield_dict)
+                atom = parse_cif_atom_line(line, atomsitefield_dict)
             else:
-                atom=parse_pdb_atom_line(line)
-            if atom is None:  # ligand atom
+                atom = parse_pdb_atom_line(line)
+
+            # Skip ligand atoms (parse_cif_atom_line returns None for them).
+            if atom is None:
                 token_mask.append(0)
                 continue
 
