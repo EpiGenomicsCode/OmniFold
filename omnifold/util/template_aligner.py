@@ -1,7 +1,6 @@
 import gemmi
 import re
 import subprocess
-import tempfile
 import logging
 from pathlib import Path
 from typing import Dict, Tuple
@@ -74,21 +73,25 @@ def template_seq_and_index(cif_path: str, chain_id: str) -> Tuple[str, Dict[int,
     return seq, mapping
 
 def kalign_pair(q_seq: str, t_seq: str) -> Tuple[str, str]:
-    """Return (aligned_query, aligned_template) using Kalign‑3."""
-    with tempfile.NamedTemporaryFile("w+", suffix=".fasta", delete=False) as f:
-        f.write(f">q\n{q_seq}\n>t\n{t_seq}\n")
-        tmp = f.name
+    """Return (aligned_query, aligned_template) using Kalign‑3 via stdin."""
+    fasta = f">q\n{q_seq}\n>t\n{t_seq}\n"
+
     try:
+        # Read sequences from STDIN (no -i) and write CLUSTAL to STDOUT.
+        # --format is aliased to -f
         aln = subprocess.check_output(
-            ["kalign", "-i", tmp, "-o", "/dev/stdout", "-format", "clu"],
-            text=True, stderr=subprocess.PIPE
+            ["kalign", "--format", "clu"],
+            input=fasta,
+            text=True
         )
-    finally:
-        Path(tmp).unlink(missing_ok=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Kalign failed while reading from stdin.")
+        logger.error(f"Kalign stderr:\n{e.stderr}")
+        raise
 
     # grab the sequences from CLUSTAL output
     q_aln = "".join(re.findall(r"^q\s+([A-Z\-]+)", aln, re.M))
     t_aln = "".join(re.findall(r"^t\s+([A-Z\-]+)", aln, re.M))
     if not q_aln or not t_aln:
-        raise RuntimeError("Kalign did not return aligned sequences")
+        raise RuntimeError("Kalign returned no aligned sequences")
     return q_aln, t_aln
