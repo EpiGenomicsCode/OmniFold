@@ -79,27 +79,40 @@ class MSAManager:
             return None
 
     def _run_command(self, cmd: List[str], cwd: Optional[str] = None) -> Tuple[int, str, str]:
-        """Runs a shell command and returns exit code, stdout, stderr."""
+        """Runs a shell command and streams its output in real-time."""
         logger.info(f"Running command: {' '.join(cmd)}")
         try:
-            process = subprocess.run(
-                cmd, 
-                capture_output=True, 
-                text=True, 
-                check=False, 
+            # Use Popen to stream output in real-time
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, # Redirect stderr to stdout
+                text=True,
+                encoding='utf-8',
+                errors='replace', # Avoid crashing on encoding errors
                 cwd=cwd
             )
-            if process.stdout:
-                logger.info(f"Command stdout:\n{process.stdout.strip()}")
 
-            # Always log stderr, as many tools (like our MSA script) write
-            # informational logs here. Use INFO level if the command succeeds,
-            # WARNING if it fails.
-            if process.stderr:
-                log_level = logging.WARNING if process.returncode != 0 else logging.INFO
-                logger.log(log_level, f"Command stderr:\n{process.stderr.strip()}")
+            stdout_lines = []
+            # Read and log output line by line as it is generated
+            for line in iter(process.stdout.readline, ''):
+                trimmed_line = line.strip()
+                if trimmed_line: # Avoid printing empty lines
+                    logger.info(trimmed_line) # Log to console and file
+                    stdout_lines.append(trimmed_line)
             
-            return process.returncode, process.stdout, process.stderr
+            process.stdout.close()
+            exit_code = process.wait()
+
+            full_stdout = "\\n".join(stdout_lines)
+            
+            # Since stderr is merged, we check the exit code to decide log level
+            if exit_code != 0:
+                logger.warning(f"Command finished with non-zero exit code: {exit_code}")
+            
+            # Stderr is merged into stdout, so we return an empty string for it
+            return exit_code, full_stdout, ""
+
         except FileNotFoundError:
             logger.error(f"Command not found: {cmd[0]}. Ensure it's installed and in PATH.")
             return -1, "", f"Command not found: {cmd[0]}"
