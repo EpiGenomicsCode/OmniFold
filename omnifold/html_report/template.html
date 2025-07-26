@@ -371,8 +371,9 @@
                     </tr>
                 </thead>
                 <tbody>
-                {% for method, predictions in all_predictions.items() %}
-                    {% if predictions %}
+                {% for method in ["AlphaFold 3", "Chai-1", "Boltz 2"] %}
+                    {% if all_predictions[method] %}
+                        {% set predictions = all_predictions[method] %}
                         {% set best_model = predictions[0] %}
                         <tr class="model-row">
                             <td>
@@ -419,7 +420,7 @@
                         {% endfor %}
                     </tr>
                     <tr>
-                        {% for _ in best_models_names %}
+                        {% for model_name in best_models_names %}
                         <th>ipSAE</th>
                         <th>pDockQ</th>
                         {% endfor %}

@@ -423,11 +423,14 @@ def run_report_generation(base_output_dir: Path):
     boltz_dir = base_output_dir / "boltz"
     chai_dir = base_output_dir / "chai1"
 
-    all_predictions = {
-        "AlphaFold 3": parse_all_af3_outputs(af_dir),
-        "Chai-1": parse_all_chai_outputs(chai_dir),
-        "Boltz 2": parse_all_boltz_outputs(boltz_dir)
-    }
+    all_predictions = {}
+    if af_dir.exists():
+        all_predictions["AlphaFold 3"] = parse_all_af3_outputs(af_dir)
+    if chai_dir.exists():
+        all_predictions["Chai-1"] = parse_all_chai_outputs(chai_dir)
+    if boltz_dir.exists():
+        all_predictions["Boltz 2"] = parse_all_boltz_outputs(boltz_dir)
+
 
     # --- Generate PAE Viewers ---
     print("\nGenerating PAE viewers...")
