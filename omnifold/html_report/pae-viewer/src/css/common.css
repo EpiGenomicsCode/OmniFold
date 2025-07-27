@@ -1,0 +1,235 @@
+#float_container {
+    position: fixed;
+    right: 5px;
+    bottom: 10%;
+    z-index: 100;
+}
+
+#float_container img {
+    display: block;
+    width: 45px;
+    height: 45px;
+    border-radius: 4px;
+    padding: 10px;
+    background-color: #000;
+    opacity: 0.5;
+    filter: alpha(opacity=50);
+    font-size: 100%;
+    font-weight: bold;
+    margin: 10px;
+    background-position: center;
+    background-size: 60% auto;
+    background-repeat: no-repeat;
+}
+
+#float_container img:hover {
+    opacity: 0.7;
+    filter: alpha(opacity=70);
+}
+
+.m_key {
+    font-weight: bold;
+    margin: 30px 0 5px 0;
+    font-size: 15pt;
+}
+
+.m_inline {
+    display: inline-block;
+}
+
+.m_key.m_inline {
+    width: 25%;
+    margin: 8px auto;
+    font-size: 12pt;
+}
+
+.m_object .m_key, .m_array .m_key {
+    font-size: 13pt;
+    margin: 20px 0 5px 0;
+}
+
+.m_block {
+    margin: 2.5px auto;
+    padding-left: 15px;
+    padding-right: 15px;
+}
+
+.m_block:nth-child(odd) {
+    background: #eee
+}
+
+.m_value {
+    display: list-item;
+    list-style-type: disc;
+    list-style-position: inside;
+    margin: 6px auto;
+}
+
+.m_value.m_inline {
+    display: inline-block;
+    width: 73.5%;
+}
+
+.m_object, .m_array {
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.m_object {
+    margin-left: 30px;
+}
+
+.m_inner_block {
+    width: 100px;
+    display: inline-block;
+    padding: 0;
+}
+
+.pubmed {
+    border: 1px solid #bbb;
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: #c5e1a5;
+    box-shadow: 1px 1px 2px 1px rgba(0, 0, 0, 0.07);
+    -moz-box-shadow: 1px 1px 2px 1px rgba(0, 0, 0, 0.07);
+    cursor: pointer;
+}
+
+.pubmed:hover {
+    background: #dcedc8;
+}
+
+.pubmed a {
+    color: #444;
+}
+
+.pubmed a:hover {
+    color: #444;
+    text-decoration: none;
+}
+
+.pubmed_author {
+    display: block;
+    font-style: italic;
+    margin-bottom: 4px;
+}
+
+.pubmed_title {
+    font-weight: bold;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.pubmed_journal {
+    font-size: 90%;
+    display: block;
+    margin-bottom: 4px;
+}
+
+table.m_table, table.common {
+    width: 100%;
+    margin: auto;
+    border-radius: 3px;
+    text-align: left;
+    margin-top: 1%;
+    border: 0.5px solid #eee;
+}
+
+table.m_table th, table.common th {
+    background: #ddd;
+}
+
+table.m_table th, table.m_table td, table.common th, table.common td {
+    padding: 10px;
+}
+
+table.common th {
+    font-weight: bold;
+}
+
+table.m_table tr:nth-child(odd) {
+    background: #eee;
+}
+
+table.common tr:nth-child(odd) {
+    background: #eee;
+}
+
+table.m_table tr:first-child {
+    font-weight: bold;
+}
+
+.delBtn {
+    background: red;
+}
+
+.table-row {
+    padding: 10px 0;
+    border-bottom: 1px solid #ededed;
+    position: relative;
+    margin: 0;
+}
+
+.table-row:last-child {
+    border-bottom: none;
+}
+
+.table-row:first-child {
+    border-top: 1px solid #ededed;
+}
+
+.table-row > * {
+    display: inline-block;
+    vertical-align: middle;
+    position: relative;
+}
+
+.table-row > label {
+    width: 150px;
+    margin-right: 10px;
+}
+
+.table-row > *:not(label) {
+    width: calc(100% - 170px);
+}
+
+.table-row > *:not(label) > input[type=text]:only-child,
+.table-row > *:not(label) > input[type=email]:only-child,
+.table-row > *:not(label) > input[type=number]:only-child,
+.table-row > *:not(label) > input[type=date]:only-child {
+    width: 100%;
+}
+
+*:disabled {
+    border: none;
+    background: transparent;
+}
+
+.table-row input, .table-row textarea, .table-row select {
+    padding: 4px 8px;
+    border-radius: 5px;
+    background: #eee;
+    border: none;
+    outline: none;
+}
+
+.indexDescription {
+    border: 1px solid #bbb;
+    border-radius: 4px;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: #c5e1a5;
+    box-shadow: 1px 1px 2px 1px rgba(0, 0, 0, 0.07);
+    -moz-box-shadow: 1px 1px 2px 1px rgba(0, 0, 0, 0.07);
+    cursor: pointer;
+}
+
+.hidden {
+    display: none !important;
+}
+
+.banner {
+    padding: 10px;
+    border-radius: 5px;
+}

@@ -1,0 +1,20 @@
+{
+  "name": "Hemoglobin_tetramer",
+  "modelSeeds": [1],
+  "sequences": [
+    {
+      "protein": {
+        "id": ["A", "C"],
+        "sequence": "MVLSPADKTNVKAAWGKVGAHAGEYGAEALERMFLSFPTTKTYFPHFDLSHGSAQVKGHGKKVADALTNAVAHVDDMPNALSALSDLHAHKLRVDPVNFKLLSHCLLVTLAAHLPAEFTPAVHASLDKFLASVSTVLTSKYR"
+      }
+    },
+    {
+      "protein": {
+        "id": ["B", "D"],
+        "sequence": "MVHLTPEEKSAVTALWGKVNVDEVGGEALGRLLVVYPWTQRFFESFGDLSTPDAVMGNPKVKAHGKKVLGAFSDGLAHLDNLKGTFATLSELHCDKLHVDPENFRLLGNVLVCVLAHHFGKEFTPPVQAAYQKVVAGVANALAHKYH"
+      }
+    }
+  ],
+  "dialect": "alphafold3",
+  "version": 3
+}

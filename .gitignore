@@ -1,0 +1,63 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+/lib/
+/lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Node.js
+# Ignore all node_modules directories
+node_modules/
+npm-debug.log
+
+# macOS
+.DS_Store
+
+# Output files
+/single_test_output/
+/single_test_output-2/
+*.zip
+ipsae_*.txt
+ipsae_*.pml
+pae-viewer/boltz_report_*.html
+pae-viewer/chai_report_*.html
+pae-viewer/AF3_*.html
+pae_viewers/
+ipsae_outputs/
+final_report.html
+OmniFold_Report.zip
+report.html
+pae-viewer/*_report_*.html 
+
+# Allow specific files needed for Singularity binds
+!omnifold/singularity_af3/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/pipeline.py
+!omnifold/singularity_af3/alphafold3/run_alphafold.py 

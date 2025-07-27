@@ -1,0 +1,22 @@
+{
+  "name": "multi_chain_1",
+  "dialect": "alphafold3",
+  "version": 1,
+  "modelSeeds": [
+    0
+  ],
+  "sequences": [
+    {
+      "protein": {
+        "id": "A",
+        "sequence": "NAVQPPCMWDICEPEIHGADEYKKPFFNQFYHSKDLKLCWVRHESTPGCRKHDQFHKDFPPLDLYTNCSWNPYWKTTYPKGYVENLLATCWIPLMCEIQGICMYTEFLAR"
+      }
+    },
+    {
+      "protein": {
+        "id": "B",
+        "sequence": "PMYYYLKNDPFVPGMMLKNQACQWGRPDWGYPKFLVRERNLNMQFPERRTWFTWHCAGCLCLHWMTQAPNMDQNFDPNEEKIWNQGKNPECHMVTSQCYECRYLWLNYIHEWFYYAACSW"
+      }
+    }
+  ]
+}

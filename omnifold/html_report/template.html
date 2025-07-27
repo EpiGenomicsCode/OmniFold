@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OmniFold Report</title>
+    <!-- Font Awesome for icons -->
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: auto;
+            background: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        h1, h2 {
+            color: #212529;
+            border-bottom: 2px solid #dee2e6;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        h1 {
+            font-size: 2.5em;
+        }
+        h2 {
+            font-size: 1.8em;
+            margin-top: 40px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        th {
+            background-color: #f1f3f5;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.85em;
+            letter-spacing: 0.5px;
+        }
+        tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        tr:hover {
+            background-color: #e9ecef;
+        }
+        .model-logo {
+            font-weight: 700;
+            padding: 6px 12px;
+            border-radius: 16px;
+            color: #fff;
+            font-size: 0.9em;
+            display: inline-block;
+            min-width: 80px;
+            text-align: center;
+        }
+        .alphafold-3-logo { background-color: #0054a6; }
+        .boltz-2-logo { background-color: #f58220; }
+        .chai-1-logo { background-color: #2ca02c; }
+
+        .clash-yes, .clash-no, .clash-na {
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 0.85em;
+            display: inline-block;
+        }
+        .clash-yes { background-color: #d9534f; }
+        .clash-no { background-color: #5cb85c; }
+        .clash-na { background-color: #777; }
+
+        th.sortable {
+            cursor: pointer;
+            position: relative;
+        }
+        th.sortable::before,
+        th.sortable::after {
+            content: '';
+            position: absolute;
+            right: 15px;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            opacity: 0.2;
+            transition: opacity 0.2s ease-in-out;
+        }
+        th.sortable::before { /* Up arrow */
+            border-bottom: 5px solid #333;
+            top: 50%;
+            margin-top: -12px;
+        }
+        th.sortable::after { /* Down arrow */
+            border-top: 5px solid #333;
+            top: 50%;
+            margin-top: 2px;
+        }
+        th.sortable:hover::before,
+        th.sortable:hover::after {
+            opacity: 0.6;
+        }
+        th.sortable.sort-asc::before,
+        th.sortable.sort-desc::after {
+            opacity: 1;
+        }
+        th.sortable.sort-asc::after,
+        th.sortable.sort-desc::before {
+            opacity: 0;
+        }
+        .pae-viewers {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+        .pae-viewer-instance .model-title {
+            text-align: center;
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            color: #333;
+        }
+        .summary-table .model-row td:first-child {
+            padding-left: 15px;
+        }
+        .summary-table .sub-row {
+            display: none; /* Hidden by default */
+            background-color: #fdfdfd;
+        }
+        .summary-table .sub-row td:first-child {
+            padding-left: 40px;
+        }
+        .expand-btn {
+            cursor: pointer;
+            display: inline-block;
+            width: 20px;
+            text-align: center;
+        }
+        .best-value {
+            font-weight: 700;
+            color: #1a73e8;
+        }
+        .interface-table th, .interface-table td {
+            text-align: center;
+        }
+        .interface-table .chain-pair {
+            text-align: left;
+            font-weight: 700;
+        }
+        .confidence-high { background-color: #e6f4ea; }
+        .confidence-medium { background-color: #fff8e1; }
+        .confidence-low { background-color: #fce8e6; }
+
+        /* Modal styles */
+        .modal {
+            display: none; 
+            position: fixed; 
+            z-index: 1000; 
+            left: 0;
+            top: 0;
+            width: 100%; 
+            height: 100%; 
+            overflow: auto; 
+            background-color: rgba(0,0,0,0.5);
+            -webkit-backdrop-filter: blur(5px);
+            backdrop-filter: blur(5px);
+        }
+        .modal-content {
+            background-color: #fefefe;
+            margin: 15% auto; 
+            padding: 25px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            text-align: center;
+            font-size: 1.1em;
+        }
+        .modal-content p {
+            margin-bottom: 20px;
+        }
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+        }
+    </style>
+
+    {% if plotly_js %}<script>{{ plotly_js | safe }}</script>{% endif %}
+
+    <script>
+        function sortTableByColumn(table, column, asc = true) {
+            const dirModifier = asc ? 1 : -1;
+            const tBody = table.tBodies[0];
+            const allRows = Array.from(tBody.rows);
+
+            // Group rows: each group contains a main 'model-row' and its subsequent 'sub-row's
+            const rowGroups = [];
+            let currentGroup = [];
+            for (const row of allRows) {
+                if (row.classList.contains('model-row')) {
+                    if (currentGroup.length > 0) {
+                        rowGroups.push(currentGroup);
+                    }
+                    currentGroup = [row];
+                } else if (row.classList.contains('sub-row')) {
+                    // This check ensures we only add sub-rows to a group that has a parent model-row
+                    if (currentGroup.length > 0) {
+                        currentGroup.push(row);
+                    }
+                }
+            }
+            if (currentGroup.length > 0) {
+                rowGroups.push(currentGroup);
+            }
+
+            // Sort the groups based on the content of the specified column in the first row of each group
+            rowGroups.sort((a, b) => {
+                const aRow = a[0]; // The 'model-row' of group a
+                const bRow = b[0]; // The 'model-row' of group b
+                const aColText = aRow.querySelector(`td:nth-child(${ column + 1 })`).textContent.trim();
+                const bColText = bRow.querySelector(`td:nth-child(${ column + 1 })`).textContent.trim();
+
+                const aVal = parseFloat(aColText);
+                const bVal = parseFloat(bColText);
+
+                if (!isNaN(aVal) && !isNaN(bVal)) {
+                    return (aVal - bVal) * dirModifier;
+                }
+                return aColText.localeCompare(bColText) * dirModifier;
+            });
+
+            // Clear the table body and re-append the rows from the sorted groups
+            tBody.innerHTML = '';
+            for (const group of rowGroups) {
+                for (const row of group) {
+                    tBody.appendChild(row);
+                }
+            }
+
+            // Update header styles to show sort direction
+            table.querySelectorAll("th.sortable").forEach(th => th.classList.remove("sort-asc", "sort-desc"));
+            const header = table.querySelector(`th:nth-child(${ column + 1 })`);
+            header.classList.add(asc ? "sort-asc" : "sort-desc");
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Setup sorting on summary table
+            document.querySelectorAll(".summary-table th.sortable").forEach(headerCell => {
+                headerCell.addEventListener("click", () => {
+                    const tableElement = headerCell.closest("table");
+                    const headerIndex = Array.prototype.indexOf.call(headerCell.parentElement.children, headerCell);
+                    const currentIsAsc = headerCell.classList.contains("sort-asc");
+                    sortTableByColumn(tableElement, headerIndex, !currentIsAsc);
+                });
+            });
+
+            // Setup expand/collapse functionality
+            document.querySelectorAll('.expand-btn').forEach(button => {
+                button.addEventListener('click', () => {
+                    const methodClass = button.dataset.methodClass;
+                    const icon = button.querySelector('i');
+                    const subRows = document.querySelectorAll('.sub-row-' + methodClass);
+
+                    let isExpanded = icon.classList.contains('fa-minus-square');
+
+                    icon.classList.toggle('fa-plus-square', isExpanded);
+                    icon.classList.toggle('fa-minus-square', !isExpanded);
+
+                    subRows.forEach(row => {
+                        row.style.display = isExpanded ? 'none' : 'table-row';
+                    });
+                });
+            });
+
+            // Modal logic for PAE viewer link errors
+            const paeViewerModal = document.getElementById('paeViewerModal');
+            const closeModal = document.querySelector('.close-button');
+
+            const hideModal = () => {
+                if (paeViewerModal) paeViewerModal.style.display = 'none';
+            };
+
+            if (closeModal) {
+                closeModal.onclick = hideModal;
+            }
+
+            window.onclick = (event) => {
+                if (event.target == paeViewerModal) {
+                    hideModal();
+                }
+            };
+        });
+
+        // Function to check if the PAE viewer is accessible
+        let checkTimeout;
+        function checkPaeViewer(url, iframeName) {
+            const modal = document.getElementById('paeViewerModal');
+            const iframe = document.getElementsByName(iframeName)[0];
+
+            // Show a warning after a timeout if we don't get a message back
+            checkTimeout = setTimeout(() => {
+                if(modal) modal.style.display = 'block';
+            }, 1000); // 1 second timeout
+
+            // Listen for a message from the iframe
+            const messageListener = (event) => {
+                // IMPORTANT: Check the origin of the message if the iframes could load untrusted content.
+                // For this case, we assume they are from the same origin or are trusted.
+                if (event.data === `pae-viewer-loaded-${iframeName}`) {
+                    clearTimeout(checkTimeout);
+                    window.removeEventListener('message', messageListener);
+                }
+            };
+            window.addEventListener('message', messageListener, false);
+
+            // If the iframe fails to load, the timeout will trigger the modal.
+            if (iframe) {
+                iframe.onload = () => {
+                    // While this onload fires, we can't tell if it's the actual content or a 404 page.
+                    // We rely on the postMessage from the viewer to confirm successful load.
+                };
+            }
+        }
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>OmniFold Report</h1>
+        
+        <section>
+            <h2>Model Summary</h2>
+            <p>
+                The highest-ranking prediction from each method is listed below.&nbsp;
+                <strong>Click on a model name</strong> to open its dedicated, shareable PAE viewer in a new tab. The viewer (adapted from the original work by the Department of General Microbiology at Georg August University of Göttingen, <a href="https://gitlab.gwdg.de/general-microbiology/pae-viewer" target="_blank">source code</a>) couples the predicted&nbsp;Aligned&nbsp;Error (PAE) matrix with its Predicted 3D structure for detailed inspection.<br/>
+                
+                Use the ▶ icon to expand and view every additional prediction generated by the method.<br/><br/>
+                <em>Important:</em> For these viewer links to work after moving or sharing this report, keep the <code>pae_viewers/</code> directory in the <u>same folder</u> as this <code>final_report.html</code> file.
+            </p>
+            <table class="summary-table">
+                <thead>
+                    <tr>
+                        <th style="width: 5%;"></th>
+                        <th class="sortable">Model / Prediction</th>
+                        <th class="sortable">Avg. pLDDT</th>
+                        <th class="sortable">pTM Score</th>
+                        <th class="sortable">ipTM / ipSAE</th>
+                        <th class="sortable">Ranking Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for method in ["AlphaFold 3", "Chai-1", "Boltz 2"] %}
+                    {% if all_predictions[method] %}
+                        {% set predictions = all_predictions[method] %}
+                        {% set best_model = predictions[0] %}
+                        <tr class="model-row">
+                            <td>
+                                {% if predictions|length > 1 %}
+                                    <span class="expand-btn" data-method-class="{{ method|replace(' ', '-') }}" onclick="toggleSubRows(this)">▶</span>
+                                {% endif %}
+                            </td>
+                            <td><a href="{{ best_model.pae_viewer_path }}" onclick="openPaeViewer(this.href); return false;">{{ best_model.name }} (Best)</a></td>
+                            <td class="{{ 'best-value' if best_overall.avg_plddt == best_model.name else '' }}">{{ "%.3f"|format(best_model.avg_plddt) if best_model.avg_plddt is not none else 'N/A' }}</td>
+                            <td class="{{ 'best-value' if best_overall.ptm == best_model.name else '' }}">{{ "%.3f"|format(best_model.ptm) if best_model.ptm is not none else 'N/A' }}</td>
+                            <td class="{{ 'best-value' if best_overall.iptm == best_model.name else '' }}">{{ "%.3f"|format(best_model.iptm) if best_model.iptm is not none else 'N/A' }}</td>
+                            <td class="{{ 'best-value' if best_overall.ranking_score == best_model.name else '' }}">{{ "%.3f"|format(best_model.ranking_score) if best_model.ranking_score is not none else 'N/A' }}</td>
+                        </tr>
+                        {% for model in predictions[1:] %}
+                        <tr class="sub-row sub-row-{{ method|replace(" ", "-") }}">
+                            <td></td>
+                            <td><a href="{{ model.pae_viewer_path }}" onclick="openPaeViewer(this.href); return false;">{{ model.name }}</a></td>
+                            <td>{{ "%.3f"|format(model.avg_plddt) if model.avg_plddt is not none else 'N/A' }}</td>
+                            <td>{{ "%.3f"|format(model.ptm) if model.ptm is not none else 'N/A' }}</td>
+                            <td>{{ "%.3f"|format(model.iptm) if model.iptm is not none else 'N/A' }}</td>
+                            <td>{{ "%.3f"|format(model.ranking_score) if model.ranking_score is not none else 'N/A' }}</td>
+                        </tr>
+                        {% endfor %}
+                    {% endif %}
+                {% endfor %}
+                </tbody>
+            </table>
+        </section>
+
+        <section>
+            <h2>Interface Confidence (ipSAE & pDockQ)</h2>
+            <p>This table shows interface-specific confidence scores for the best model from each method.
+                <b><a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC11844409/" target="_blank">ipSAE</a></b> is a refined interface score that is more robust against disordered regions (higher is better).
+                <b>pDockQ</b> estimates the quality of the docked interface, where a score > 0.23 is often considered acceptable (higher is better).
+                Cells are colored by confidence: <span class="confidence-high" style="padding: 2px 5px; border-radius: 3px;">High</span>, 
+                <span class="confidence-low" style="padding: 2px 5px; border-radius: 3px;">Low</span>.
+            </p>
+            <table class="interface-table">
+                <thead>
+                    <tr>
+                        <th rowspan="2" class="chain-pair">Chain Pair</th>
+                        {% for model_name in best_models_names %}
+                            <th colspan="2">{{ model_name.split(' (')[0] }}</th>
+                        {% endfor %}
+                    </tr>
+                    <tr>
+                        {% for model_name in best_models_names %}
+                        <th>ipSAE</th>
+                        <th>pDockQ</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for pair, models in interface_data_by_pair.items() %}
+                    <tr>
+                        <td class="chain-pair">{{ pair }}</td>
+                        {% for model_name in best_models_names %}
+                            {% set scores = models.get(model_name) %}
+                            <td class="{{ 'confidence-high' if scores and scores.ipsae > 0.5 else 'confidence-low' if scores }}">{{ "%.3f"|format(scores.ipsae) if scores else 'N/A' }}</td>
+                            <td class="{{ 'confidence-high' if scores and scores.pdockq > 0.23 else 'confidence-low' if scores }}">{{ "%.3f"|format(scores.pdockq) if scores else 'N/A' }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="{{ 1 + best_models_names|length * 2 }}">No interface data available. Run ipSAE analysis.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+
+        <section id="plddt-plot" class="card">
+            <h2>Per-Residue Confidence (pLDDT)</h2>
+            <p>The plot below shows the per-residue predicted Local Distance Difference Test (pLDDT) score, a measure of local confidence in the prediction for each amino acid. Ranging from 0-100, scores above 90 suggest high confidence in the structure, while scores below 70 indicate potentially disordered regions. You can hover over the plot to inspect residue-specific scores. This interactive chart is powered by Plotly.</p>
+            {{ plddt_plot | safe }}
+        </section>
+
+    </div>
+
+    <!-- The Modal -->
+    <div id="errorModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" onclick="closeModal()">&times;</span>
+            <h3>File Not Found</h3>
+            <p>The linked PAE viewer file is missing. This report requires the <strong>pae_viewers</strong> directory to be in the same folder to function correctly.</p>
+            <p>Please locate the original <code>OmniFold_Report.zip</code> file, extract all its contents, and open this report from inside the unzipped folder.</p>
+        </div>
+    </div>
+
+    <script>
+        function openPaeViewer(path) {
+            if (path.endsWith("#")) {
+                alert("PAE Viewer not generated for this model.");
+                return;
+            }
+
+            let viewerWindow = null;
+            let timeout = null;
+
+            const messageListener = (event) => {
+                if (event.data === 'pae_viewer_loaded') {
+                    // Success! The viewer loaded. Clear the timeout and the listener.
+                    clearTimeout(timeout);
+                    window.removeEventListener('message', messageListener);
+                }
+            };
+
+            window.addEventListener('message', messageListener, false);
+
+            viewerWindow = window.open(path, '_blank');
+
+            timeout = setTimeout(() => {
+                // If this timeout runs, it means we never got the 'pae_viewer_loaded' message.
+                document.getElementById('errorModal').style.display = 'block';
+                // Clean up the listener and close the blank tab that may have opened.
+                window.removeEventListener('message', messageListener);
+                if (viewerWindow) {
+                    viewerWindow.close();
+                }
+            }, 1000); // Wait 1 second for the confirmation message.
+        }
+
+        function closeModal() {
+            document.getElementById('errorModal').style.display = 'none';
+        }
+
+        // Close modal if user clicks outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('errorModal');
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+
+        function toggleSubRows(element) {
+            const methodClass = element.dataset.methodClass;
+            if (!methodClass) return;
+            const isExpanding = element.innerText === '▶';
+            element.innerText = isExpanding ? '▼' : '▶';
+            document.querySelectorAll('.sub-row-' + methodClass).forEach(row => {
+                row.style.display = isExpanding ? 'table-row' : 'none';
+            });
+        }
+    </script>
+    {% if pae_viewer_bundle_js %}
+    <script>
+        {{ pae_viewer_bundle_js | safe }}
+    </script>
+    <script>
+        {{ pae_init_script_js | safe }}
+    </script>
+    {% endif %}
+</body>
+</html>

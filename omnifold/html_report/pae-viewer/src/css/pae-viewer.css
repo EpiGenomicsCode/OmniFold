@@ -1,0 +1,107 @@
+.pae-viewer {
+    position: relative;
+    width: 320px;
+    height: 320px;
+    user-select: none;
+}
+
+/*
+For SVG elements, only responsive design changes (highlighting etc.)
+should be set using CSS. For general appearance, SVG attributes should
+be used for easier export.
+*/
+
+
+.pv-graph {
+    overflow: visible;
+}
+
+.pv-interactive-layer {
+    cursor: crosshair;
+}
+
+.pv-crosslink-marker {
+    pointer-events: all;
+    cursor: pointer;
+}
+
+.pv-crosslink-unselected {
+    opacity: 0.3;
+}
+
+.pv-crosslink-hover:not(.pv-crosslink-selected) {
+    filter: brightness(0.5);
+    opacity: 1;
+}
+
+.pv-regions {
+    cursor: pointer;
+}
+
+.pv-region:hover {
+    filter: brightness(1.2);
+}
+
+.pv-region-selected  {
+    opacity: 1;
+    filter: brightness(1.2);
+}
+
+.pv-color-legend {
+    font-size: small;
+    margin: 40px auto 20px auto;
+}
+
+.pv-color-scale {
+    height: 40px;
+    box-shadow: 1px 1px 2px 1px rgba(0, 0, 0, 0.07);
+    border: 1px solid black;
+}
+
+.pv-color-ticks {
+    position: relative;
+}
+
+.pv-color-ticks > span {
+    position: absolute;
+    left: 0%;
+    transform: translate(-50%, 0);
+}
+
+.pv-color-legend-label {
+    text-align: center;
+}
+
+.pv-status {
+    margin-bottom: 0.5em;
+    font-size: small;
+    font-family: "Courier New", "Courier", monospace;
+}
+
+.pv-status-cursor:empty:before {
+    content: "\200b";
+}
+
+.pv-status-selection:empty:before {
+    content: "\200b";
+}
+
+.pv-x {
+    background-color: rgba(0, 255, 255, 0.2)
+}
+
+.pv-y {
+    background-color: rgba(255, 165, 0, 0.2)
+}
+
+.pv-overlap {
+    background-color: rgba(255, 0, 255, 0.2)
+}
+
+.pv-color-marker {
+    background-color: rgba(100%, 100%, 100%, 50%);
+    color: white;
+    border-radius: 5px;
+    padding: 0 0.3em 0 0.3em;
+    margin: 0.2em;
+}

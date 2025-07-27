@@ -1,0 +1,24 @@
+name: omnifold_env
+channels:
+  - defaults
+  - bioconda
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - kalign3
+  - nodejs=20.10.0
+  - pip:
+    - gemmi==0.7.3
+    - pandas
+    - requests
+    - numpy
+    - pyyaml
+    - rich
+    - tqdm 
+    - pyfastx
+    - biopython
+    - plotly
+    - pydantic
+    - jinja2
+    - pyarrow

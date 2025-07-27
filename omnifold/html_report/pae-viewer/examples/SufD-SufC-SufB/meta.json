@@ -1,0 +1,34 @@
+{
+  "id": 160,
+  "title": "SufD-SufC-SufB",
+  "handle": "SufD-SufC-SufB",
+  "structureFile": "examples/SufD-SufC-SufB/structure.pdb",
+  "crosslinksFile": "examples/SufD-SufC-SufB/crosslinks.csv",
+  "iptm": "0.8482",
+  "ptm": "0.8613",
+  "plddt": "87.2104",
+  "members": [
+    {
+      "id": "1A9DA839AB77AF53958CB8426607BEF14F62B85E",
+      "title": "SufD",
+      "uniprot": "O32165",
+      "position": 0,
+      "length": 437
+    },
+    {
+      "id": "E966F3808222820C0644DC98F95765B89E6A2551",
+      "title": "SufC",
+      "uniprot": "P80866",
+      "position": 1,
+      "length": 261
+    },
+    {
+      "id": "5991F051C5BAD61A0860BBC64A37DB9D16130998",
+      "title": "SufB",
+      "uniprot": "O32162",
+      "position": 2,
+      "length": 465
+    }
+  ]
+}
+
