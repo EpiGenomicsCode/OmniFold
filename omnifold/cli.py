@@ -57,6 +57,21 @@ def main():
         help="Path to the directory where results will be saved."
     )
 
+    pipeline_group = parser.add_argument_group('Pipeline Control')
+    mut_group = pipeline_group.add_mutually_exclusive_group()
+    mut_group.add_argument(
+        "--msa_only",
+        action="store_true",
+        help="Run only the MSA and config generation phase. The pipeline will stop before model execution. "
+             "The specified --output_dir can then be used as --input_dir for a --gpu_only run."
+    )
+    mut_group.add_argument(
+        "--gpu_only",
+        action="store_true",
+        help="Run only the model execution (GPU) phase. This requires providing an --input_dir that contains "
+             "the results of a previous --msa_only run."
+    )
+
     container_group = parser.add_argument_group('Singularity Container Paths')
     container_group.add_argument(
         "--alphafold3_sif_path",
@@ -323,6 +338,26 @@ def main():
     args = parser.parse_args()
     logger = setup_logging(args.log_level)
 
+    # --- Validation for new flags ---
+    if args.gpu_only:
+        if not args.output_dir:
+            parser.error("--output_dir pointing to a previous --msa_only run is required for --gpu_only mode.")
+        if not os.path.isdir(args.output_dir):
+            parser.error(f"--output_dir specified for --gpu_only is not a valid directory: {args.output_dir}")
+        if not os.path.exists(os.path.join(args.output_dir, "omnifold_job.json")):
+             parser.error(f"omnifold_job.json not found in {args.output_dir}. Please ensure the directory is a valid output from an --msa_only run.")
+    elif args.msa_only:
+        if not args.input_file:
+            parser.error("--msa_only requires --input_file to be specified.")
+        if not args.output_dir:
+            parser.error("--output_dir is required for --msa_only run.")
+    else: # Full run
+        if not args.input_file:
+            parser.error("--input_file is required for a full pipeline run.")
+        if not args.output_dir:
+            parser.error("--output_dir is required for a full run.")
+    # ---
+
     config = vars(args) # Convert parsed args to a dictionary
 
     # --- Add _is_user_specified flags for Chai-1 --- 
@@ -368,7 +403,7 @@ def main():
     # ---
 
     config = {
-        "input_file": os.path.abspath(args.input_file),
+        "input_file": os.path.abspath(args.input_file) if args.input_file else None,
         "output_dir": os.path.abspath(args.output_dir),
         
         "alphafold3_sif_path": os.path.abspath(args.alphafold3_sif_path) if args.alphafold3_sif_path else None,
@@ -434,12 +469,16 @@ def main():
         config["af3_buckets"] = args.af3_buckets
     
     # --- Path and Model Sanity Checks ---
+    msa_only_colabfold = args.msa_only and args.msa_method == "colabfold"
+
     sifs_provided = [
         config["alphafold3_sif_path"],
         config["boltz1_sif_path"],
         config["chai1_sif_path"]
     ]
-    if not any(sifs_provided):
+
+    # Enforce at least one SIF **unless** we are in an MSA-only run that will use ColabFold (no container needed)
+    if not any(sifs_provided) and not msa_only_colabfold:
         logger.error("No Singularity image file (.sif) provided. "
                      "Please provide at least one SIF path for AlphaFold3, Boltz, or Chai-1 "
                      "using --alphafold3_sif_path, --boltz1_sif_path, or --chai1_sif_path.")
@@ -447,7 +486,7 @@ def main():
 
     error_messages = []
 
-    # Check AlphaFold3 paths if SIF is provided
+    # Check AlphaFold3 paths only if a SIF is needed / provided
     if config["alphafold3_sif_path"]:
         if not os.path.exists(config["alphafold3_sif_path"]):
             error_messages.append(f"AlphaFold3 SIF path does not exist: {config['alphafold3_sif_path']} (from --alphafold3_sif_path)")
@@ -455,16 +494,19 @@ def main():
             error_messages.append("--alphafold3_model_weights_dir is required when --alphafold3_sif_path is provided.")
         elif not os.path.exists(config["alphafold3_model_weights_dir"]):
             error_messages.append(f"AlphaFold3 model weights directory does not exist: {config['alphafold3_model_weights_dir']} (from --alphafold3_model_weights_dir)")
-        # alphafold3_database_dir is optional even if AF3 is run, as AF3 can run MSA-free or with precomputed MSAs
+    else:
+        # In MSA-only mode with alphafold3 pipeline we MUST have the SIF and weights
+        if args.msa_only and args.msa_method == "alphafold3":
+            error_messages.append("--msa_only with msa_method=alphafold3 requires --alphafold3_sif_path to be provided.")
 
-    # Check Boltz path if SIF is provided
+    # Check Boltz path if SIF is provided and we are not in msa_only_colabfold mode
     if config["boltz1_sif_path"] and not os.path.exists(config["boltz1_sif_path"]):
         error_messages.append(f"Boltz SIF path does not exist: {config['boltz1_sif_path']} (from --boltz1_sif_path)")
 
-    # Check Chai-1 path if SIF is provided
+    # Check Chai-1 path if SIF is provided and not in msa_only_colabfold mode
     if config["chai1_sif_path"] and not os.path.exists(config["chai1_sif_path"]):
         error_messages.append(f"Chai-1 SIF path does not exist: {config['chai1_sif_path']} (from --chai1_sif_path)")
-    
+
     if error_messages:
         for msg in error_messages:
             logger.error(msg)
@@ -474,7 +516,12 @@ def main():
     
     try:
         orchestrator = Orchestrator(config=config, output_dir=config["output_dir"])
-        orchestrator.run_pipeline(input_file=config["input_file"])
+        input_path = config["output_dir"] if args.gpu_only else config["input_file"]
+        orchestrator.run_pipeline(
+            input_path=input_path, 
+            msa_only=args.msa_only, 
+            gpu_only=args.gpu_only
+        )
         logger.info("Pipeline execution finished.")
     except Exception as e:
         logger.error(f"Pipeline execution failed: {e}", exc_info=True)

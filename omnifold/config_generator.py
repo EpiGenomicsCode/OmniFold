@@ -115,6 +115,9 @@ class ConfigGenerator:
             else:
                 logger.info("No sequences suitable for Boltz found, or original Boltz config provided. Skipping new Boltz YAML generation.")
                 
+            if "chai_fasta_path" in cli_config:
+                config_paths["chai_config_path"] = cli_config["chai_fasta_path"]
+            
             if not config_paths:
                  logger.error("Failed to identify or generate any model configuration files.")
                  return None

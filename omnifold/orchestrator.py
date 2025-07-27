@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from datetime import datetime
+import json
 
 from .input_handler import InputHandler
 from .msa_manager import MSAManager
@@ -80,6 +81,7 @@ class Orchestrator:
         self.msa_manager = MSAManager(self.config, str(self.msa_output_dir))
         self.config_generator = ConfigGenerator()
         self.runner = Runner(self.config)
+        self.job_state_file = self.output_dir / "omnifold_job.json"
 
     def _setup_logging(self):
         """
@@ -151,24 +153,201 @@ class Orchestrator:
             logger.error(f"Error during A3M to Boltz CSV conversion: {e}", exc_info=True)
             return None
 
-    def run_pipeline(self, input_file: str) -> bool:
+    def _write_job_state(self, state: Dict[str, Any]):
+        """Saves the job state (like config paths) to a JSON file."""
+        try:
+            with open(self.job_state_file, 'w') as f:
+                json.dump(state, f, indent=4)
+            logger.info(f"Job state saved to {self.job_state_file}")
+        except IOError as e:
+            logger.error(f"Failed to write job state to {self.job_state_file}: {e}", exc_info=True)
+
+    def _read_job_state(self) -> Optional[Dict[str, Any]]:
+        """Loads the job state from a JSON file."""
+        if not self.job_state_file.is_file():
+            logger.error(f"Job state file not found: {self.job_state_file}. Cannot proceed with --gpu_only run.")
+            return None
+        try:
+            with open(self.job_state_file, 'r') as f:
+                state = json.load(f)
+            logger.info(f"Job state successfully loaded from {self.job_state_file}")
+            return state
+        except (IOError, json.JSONDecodeError) as e:
+            logger.error(f"Failed to read or parse job state file {self.job_state_file}: {e}", exc_info=True)
+            return None
+
+    def run_pipeline(self, input_path: str, msa_only: bool = False, gpu_only: bool = False) -> bool:
         """
         Run the complete prediction pipeline.
         Handles input parsing, MSA generation, config creation, and model execution.
         Manages GPU assignments and parallel/sequential execution.
         
         Args:
-            input_file: Path to the input file (FASTA, AF3 JSON, or Boltz YAML)
+            input_path: Path to the input file (FASTA, etc.) or input directory for gpu_only mode.
+            msa_only: If True, stops after MSA and config generation.
+            gpu_only: If True, skips to the GPU execution phase.
             
         Returns:
             True if pipeline completed successfully, False otherwise
+        """
+        if gpu_only:
+            logger.info(f"--- Starting GPU-only phase from directory: {input_path} ---")
+            job_state = self._read_job_state()
+            if not job_state:
+                return False
+            
+            # The 'configs' dict is the main artifact we need from the state file
+            configs = job_state.get("configs", {})
+            if not configs:
+                logger.error("Job state file does not contain necessary 'configs' information.")
+                return False
+        else:
+            logger.info(f"--- Starting new pipeline run for input: {input_path} ---")
+            configs = self._generate_msas_and_configs(input_path)
+            if not configs:
+                logger.error("Failed to generate MSAs and configs.")
+                return False
+
+        if msa_only:
+            job_state_to_save = {"configs": configs}
+            # Persist extra artefacts outside configs if useful for quick access
+            if configs.get("chai_pqt_msa_dir"):
+                job_state_to_save["chai_pqt_msa_dir"] = configs["chai_pqt_msa_dir"]
+            self._write_job_state(job_state_to_save)
+            logger.info("MSA-only phase complete. Pipeline halted as requested.")
+            return True
+
+        # --- This point is the start of the GPU phase ---
+        
+        models_to_run_info = []
+        if "af3_config_path" in configs and self.config.get("alphafold3_sif_path"):
+            models_to_run_info.append(("alphafold3", configs["af3_config_path"], self.af3_output_dir))
+        if "boltz_config_path" in configs and self.config.get("boltz1_sif_path"):
+            models_to_run_info.append(("boltz1", configs["boltz_config_path"], self.boltz_output_dir))
+
+        if "chai_config_path" in configs and self.config.get("chai1_sif_path"):
+            chai_fasta_path = configs["chai_config_path"]
+            if chai_fasta_path and Path(chai_fasta_path).is_file():
+                logger.info(f"Chai-1 will use FASTA: {chai_fasta_path}")
+                
+                # In gpu_only mode, we must retrieve the PQT path from the job state.
+                if gpu_only:
+                    pqt_dir = configs.get("chai_pqt_msa_dir")
+                    if pqt_dir and Path(pqt_dir).is_dir():
+                        self.config["current_chai1_msa_pqt_dir"] = pqt_dir
+                        logger.info(f"Loaded Chai-1 PQT MSA directory from job state: {pqt_dir}")
+                    else:
+                        logger.warning("Running Chai-1 in --gpu_only mode, but no PQT MSA directory found in job state. Chai-1 may fail if it requires local MSAs.")
+                
+                models_to_run_info.append(("chai1", chai_fasta_path, self.chai1_output_dir))
+            else:
+                logger.warning("Chai-1 SIF is provided, but no suitable Chai-1 FASTA input was found/generated. Skipping Chai-1 execution.")
+        
+        if not models_to_run_info:
+            logger.info("No models to run after configuration generation and checks.")
+            return True
+
+        model_names_for_gpu_assignment = [info[0] for info in models_to_run_info]
+        gpu_assignments = assign_gpus_to_models(model_names_for_gpu_assignment, force_sequential=self.config.get("run_sequentially", False))
+
+        if not gpu_assignments:
+            logger.error("Failed to assign GPUs to models. Aborting execution.")
+            return False
+
+        unique_gpu_ids = set(filter(None, gpu_assignments.values()))
+        if self.config.get("run_sequentially", False) or len(unique_gpu_ids) <= 1 and len(models_to_run_info) > 1:
+            max_workers = 1
+            logger.info(f"Executing models sequentially with max_workers=1.")
+        else:
+            max_workers = len(unique_gpu_ids) if unique_gpu_ids else 1
+            logger.info(f"Executing models potentially in parallel with max_workers={max_workers} (based on unique GPUs).")
+
+        results = {}
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = []
+            
+            for model_name, config_path_or_fasta, model_output_dir in models_to_run_info:
+                model_gpu = gpu_assignments.get(model_name)
+                
+                if model_gpu is not None:
+                    futures.append(
+                        executor.submit(
+                            self._run_model,
+                            model_name,
+                            config_path_or_fasta,
+                            str(model_output_dir),
+                            model_gpu
+                        )
+                    )
+                else:
+                    logger.warning(f"No GPU assigned for {model_name}, skipping execution.")
+
+            if not futures:
+                logger.error("No models were submitted for execution (e.g., due to no GPU assignment or no SIFs).")
+                return False
+            
+            num_submitted = len(futures)
+            processed_models_map = {id(future): models_to_run_info[i][0] for i, future in enumerate(futures)} 
+            
+            for future in as_completed(futures):
+                model_name_completed = processed_models_map.get(id(future), f"unknown_model__{id(future)}")
+                try:
+                    result = future.result()
+                    results[model_name_completed] = result
+                    logger.info(f"Received result for {model_name_completed}")
+                except Exception as e:
+                    logger.error(f"Model execution for {model_name_completed} failed: {e}", exc_info=True)
+                    if model_name_completed not in results:
+                        results[model_name_completed] = (-1, "", f"Future failed with exception: {e}")
+                finally:
+                    if model_name_completed == "chai1" and "current_chai1_msa_pqt_dir" in self.config:
+                        del self.config["current_chai1_msa_pqt_dir"]
+                        logger.info("Cleaned up temporary Chai-1 PQT MSA directory path from config.")
+        
+        if len(results) != num_submitted:
+            logger.error("Mismatch in submitted vs completed models. Some models may have failed or not reported results properly.")
+            return False
+
+        success = True
+        for model_name, (exit_code, stdout, stderr) in results.items():
+            if exit_code != 0:
+                logger.error(f"{model_name} failed with exit code {exit_code}")
+                logger.error(f"STDOUT:\n{stdout}")
+                logger.error(f"STDERR:\n{stderr}")
+                success = False
+            else:
+                logger.info(f"{model_name} completed successfully")
+                logger.debug(f"{model_name} STDOUT:\n{stdout}")
+        
+        self._write_summary(results)
+        
+        # --- Generate Final HTML Report ---
+        # Generate report if at least one model succeeded
+        any_success = any(res[0] == 0 for res in results.values())
+        if any_success:
+            try:
+                logger.info("Generating final HTML report for successful models...")
+                run_report_generation(Path(self.output_dir))
+            except Exception as e:
+                logger.error(f"Failed to generate final HTML report: {e}", exc_info=True)
+        else:
+            logger.warning("Skipping final report generation as all model predictions failed.")
+
+        # The overall pipeline success depends on ALL models succeeding.
+        # This remains unchanged to correctly signal job status.
+        return success
+
+    def _generate_msas_and_configs(self, input_file: str) -> Optional[Dict[str, str]]:
+        """
+        Handles the first part of the pipeline: input parsing, MSA generation, and config creation.
+        This function is called for a full run or an MSA-only run.
         """
         try:
             logger.info(f"Parsing input file: {input_file}")
             job_input = self.input_handler.parse_input(input_file)
             if not job_input:
                 logger.error("Failed to parse input file.")
-                return False
+                return None
             self.msa_manager.job_input = job_input
             
             msa_result = None
@@ -178,7 +357,7 @@ class Orchestrator:
                 
                 if not msa_result:
                     logger.error("MSA generation failed.")
-                    return False
+                    return None
 
                 # Existing handling when MSAManager provides detailed A3M mapping
                 if "protein_id_to_a3m_path" in msa_result:
@@ -209,6 +388,7 @@ class Orchestrator:
                     job_input.af3_data_json = msa_result["af3_data_json"]
 
                 if "chai_fasta_path" in msa_result:
+                    # This path is now crucial for the job state.
                     self.config["current_chai1_fasta_path"] = msa_result["chai_fasta_path"]
                     logger.info(f"Chai-1 will use FASTA generated by MSA provider: {msa_result['chai_fasta_path']}")
 
@@ -218,15 +398,6 @@ class Orchestrator:
 
                 logger.info(f"--- JobInput State After MSA ---\n{job_input}\n----------------------------------")
 
-            # This block seems redundant with the one above and can be simplified/removed.
-            # Keeping it for now to avoid breaking existing AF3-only logic without more testing.
-            if job_input.af3_data_json and not job_input.boltz_csv_msa_dir: # Only if boltz conversion hasn't run
-                logger.info("AF3 data JSON is present. Running A3M extraction and Boltz CSV conversion.")
-                # This part of the logic might need to be refactored to be cleaner.
-                # Assuming extract_all_protein_a3ms_from_af3_json and _run_a3m_to_boltz_csv_conversion
-                # can be harmonized. For now, let's keep the original flow for AF3 MSA.
-                pass # The original logic for this case was complex and is being refactored.
-            
             if job_input.model_seeds is None and self.config.get("default_seed") is not None:
                 default_seed_val = self.config.get("default_seed")
                 job_input.model_seeds = [int(default_seed_val)]
@@ -236,129 +407,25 @@ class Orchestrator:
 
             logger.info("Generating model configurations...")
             configs = self.config_generator.generate_configs(job_input, Path(self.output_dir), self.config)
+            
             if not configs:
                 logger.error("Failed to generate model configurations.")
-                return False
+                return None
             
-            models_to_run_info = []
-            if "af3_config_path" in configs and self.config.get("alphafold3_sif_path"):
-                models_to_run_info.append(("alphafold3", configs["af3_config_path"], "af3_output_dir"))
-            if "boltz_config_path" in configs and self.config.get("boltz1_sif_path"):
-                models_to_run_info.append(("boltz1", configs["boltz_config_path"], "boltz_output_dir"))
-
-            if self.config.get("chai1_sif_path"):
-                # The correct FASTA path is now consistently provided by the MSAManager.
-                chai_fasta_path_for_runner = self.config.get("current_chai1_fasta_path")
-                if chai_fasta_path_for_runner and Path(chai_fasta_path_for_runner).is_file():
-                    logger.info(f"Chai-1 will use FASTA: {chai_fasta_path_for_runner}")
-                    if job_input.protein_id_to_pqt_path:
-                        # Find the directory containing the first PQT file.
-                        first_pqt_path = next(iter(job_input.protein_id_to_pqt_path.values()))
-                        self.config["current_chai1_msa_pqt_dir"] = str(Path(first_pqt_path).parent)
-                        logger.info(f"Chai-1 will use PQT MSAs from: {self.config['current_chai1_msa_pqt_dir']}")
-                    models_to_run_info.append(("chai1", chai_fasta_path_for_runner, "chai1_output_dir"))
-                else:
-                    logger.warning("Chai-1 SIF is provided, but no suitable Chai-1 FASTA input was found/generated. Skipping Chai-1 execution.")
+            # Add the special Chai-1 FASTA path to the configs dict so it gets saved in the job state
+            if self.config.get("current_chai1_fasta_path"):
+                configs["chai_config_path"] = self.config.get("current_chai1_fasta_path")
             
-            if not models_to_run_info:
-                logger.info("No models to run after configuration generation and checks.")
-                return True # Nothing to run, so considered successful completion of an empty workload
+            # Also save the PQT directory if it exists
+            if self.config.get("current_chai1_msa_pqt_dir"):
+                configs["chai_pqt_msa_dir"] = self.config.get("current_chai1_msa_pqt_dir")
 
-            model_names_for_gpu_assignment = [info[0] for info in models_to_run_info]
-            gpu_assignments = assign_gpus_to_models(model_names_for_gpu_assignment, force_sequential=self.config.get("run_sequentially", False))
+            return configs
 
-            if not gpu_assignments:
-                logger.error("Failed to assign GPUs to models. Aborting execution.")
-                return False
-
-            unique_gpu_ids = set(filter(None, gpu_assignments.values()))
-            if self.config.get("run_sequentially", False) or len(unique_gpu_ids) <= 1 and len(models_to_run_info) > 1:
-                max_workers = 1
-                logger.info(f"Executing models sequentially with max_workers=1.")
-            else:
-                max_workers = len(unique_gpu_ids) if unique_gpu_ids else 1
-                logger.info(f"Executing models potentially in parallel with max_workers={max_workers} (based on unique GPUs).")
-
-            results = {}
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                futures = []
-                
-                for model_name, config_path_or_fasta, output_dir_attr in models_to_run_info:
-                    model_gpu = gpu_assignments.get(model_name)
-                    model_output_dir = getattr(self, output_dir_attr)
-                    
-                    if model_gpu is not None:
-                        futures.append(
-                            executor.submit(
-                                self._run_model,
-                                model_name,
-                                config_path_or_fasta,
-                                model_output_dir,
-                                model_gpu
-                            )
-                        )
-                    else:
-                        logger.warning(f"No GPU assigned for {model_name}, skipping execution.")
-
-                if not futures:
-                    logger.error("No models were submitted for execution (e.g., due to no GPU assignment or no SIFs).")
-                    return False
-                
-                num_submitted = len(futures)
-                processed_models_map = {id(future): models_to_run_info[i][0] for i, future in enumerate(futures)} 
-                
-                for future in as_completed(futures):
-                    model_name_completed = processed_models_map.get(id(future), f"unknown_model__{id(future)}")
-                    try:
-                        result = future.result()
-                        results[model_name_completed] = result
-                        logger.info(f"Received result for {model_name_completed}")
-                    except Exception as e:
-                        logger.error(f"Model execution for {model_name_completed} failed: {e}", exc_info=True)
-                        if model_name_completed not in results:
-                            results[model_name_completed] = (-1, "", f"Future failed with exception: {e}")
-                    finally:
-                        if model_name_completed == "chai1" and "current_chai1_msa_pqt_dir" in self.config:
-                            del self.config["current_chai1_msa_pqt_dir"]
-                            logger.info("Cleaned up temporary Chai-1 PQT MSA directory path from config.")
-            
-            if len(results) != num_submitted:
-                logger.error("Mismatch in submitted vs completed models. Some models may have failed or not reported results properly.")
-                return False
-
-            success = True
-            for model_name, (exit_code, stdout, stderr) in results.items():
-                if exit_code != 0:
-                    logger.error(f"{model_name} failed with exit code {exit_code}")
-                    logger.error(f"STDOUT:\n{stdout}")
-                    logger.error(f"STDERR:\n{stderr}")
-                    success = False
-                else:
-                    logger.info(f"{model_name} completed successfully")
-                    logger.debug(f"{model_name} STDOUT:\n{stdout}")
-            
-            self._write_summary(results)
-            
-            # --- Generate Final HTML Report ---
-            # Generate report if at least one model succeeded
-            any_success = any(res[0] == 0 for res in results.values())
-            if any_success:
-                try:
-                    logger.info("Generating final HTML report for successful models...")
-                    run_report_generation(Path(self.output_dir))
-                except Exception as e:
-                    logger.error(f"Failed to generate final HTML report: {e}", exc_info=True)
-            else:
-                logger.warning("Skipping final report generation as all model predictions failed.")
-
-            # The overall pipeline success depends on ALL models succeeding.
-            # This remains unchanged to correctly signal job status.
-            return success
-            
         except Exception as e:
-            logger.error(f"Pipeline failed with unexpected error: {e}", exc_info=True)
-            return False
-
+            logger.error(f"MSA and config generation failed with unexpected error: {e}", exc_info=True)
+            return None
+            
     def _write_summary(self, results: Dict[str, Tuple[int, str, str]]):
         """
         Write a summary of the prediction results to a file.
