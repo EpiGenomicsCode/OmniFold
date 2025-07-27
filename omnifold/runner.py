@@ -256,18 +256,7 @@ class Runner:
 
         else:
             return -1, "", f"Unsupported model_name: {model_name}"
-
-        # --- Log final input file content before execution ---
-        try:
-            if model_name == "alphafold3":
-                with open(input_config_file_host_path, 'r') as f:
-                    logger.info(f"--- Final AlphaFold3 Input JSON for Runner ---\n{f.read().strip()}\n------------------------------------------------")
-            elif model_name == "chai1":
-                 with open(input_config_file_host_path, 'r') as f:
-                    logger.info(f"--- Final Chai-1 Input FASTA for Runner ---\n{f.read().strip()}\n---------------------------------------------")
-        except Exception as e:
-            logger.warning(f"Could not log final input file content for {model_name}: {e}")
-            
+ 
         full_cmd = []
         if model_name == "alphafold3":
             full_cmd = ["singularity", "run"]
