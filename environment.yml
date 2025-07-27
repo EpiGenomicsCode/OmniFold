@@ -7,7 +7,7 @@ dependencies:
   - python=3.11
   - pip
   - kalign3
-  - nodejs=20.10.0
+  - nodejs=20.9.0
   - pip:
     - gemmi==0.7.3
     - pandas
