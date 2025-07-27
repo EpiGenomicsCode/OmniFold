@@ -48,10 +48,15 @@ class Orchestrator:
         if model_dirs_exist:
             # If so, create a new timestamped subdirectory for this run
             run_timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            input_file_stem = Path(config["input_file"]).stem
-            # Sanitize the filename stem to remove problematic characters like ':'
-            sanitized_stem = re.sub(r'[^a-zA-Z0-9_-]', '_', input_file_stem)
-            self.output_dir = base_output_dir / f"{sanitized_stem}_{run_timestamp}"
+            # In GPU-only mode, we use the existing directory
+            if config.get("input_file"):
+                input_file_stem = Path(config["input_file"]).stem
+                # Sanitize the filename stem to remove problematic characters like ':'
+                sanitized_stem = re.sub(r'[^a-zA-Z0-9_-]', '_', input_file_stem)
+                self.output_dir = base_output_dir / f"{sanitized_stem}_{run_timestamp}"
+            else:
+                # For GPU-only mode, use the provided directory as is
+                self.output_dir = base_output_dir
         else:
             # Otherwise, use the user-provided directory as is
             self.output_dir = base_output_dir
