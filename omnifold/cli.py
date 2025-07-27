@@ -46,7 +46,7 @@ def main():
 
     parser.add_argument(
         "--input_file",
-        required=True,
+        required=False,  # Changed to False as it's not always required
         type=str,
         help="Path to the input file (FASTA, AlphaFold3 JSON, or Boltz YAML)."
     )
@@ -346,6 +346,8 @@ def main():
             parser.error(f"--output_dir specified for --gpu_only is not a valid directory: {args.output_dir}")
         if not os.path.exists(os.path.join(args.output_dir, "omnifold_job.json")):
              parser.error(f"omnifold_job.json not found in {args.output_dir}. Please ensure the directory is a valid output from an --msa_only run.")
+        if args.input_file:
+            logger.warning("--input_file is ignored in --gpu_only mode as it uses the previous MSA run's output directory.")
     elif args.msa_only:
         if not args.input_file:
             parser.error("--msa_only requires --input_file to be specified.")
