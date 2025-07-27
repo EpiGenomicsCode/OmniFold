@@ -749,18 +749,24 @@ class MSAManager:
                 logger.error(f"Failed to extract unpaired A3Ms from JSON {output_data_json_path}. This might affect Boltz CSV generation.")
             # ---
 
-            chai1_sif_path_str = self.config.get("chai1_sif_path")
-            if chai1_sif_path_str and Path(chai1_sif_path_str).is_file():
-                logger.info("Chai-1 SIF found. Attempting A3M to PQT conversion.")
-                source_msas_dir = af3_msa_output_actual_dir / "msas"
-                target_pqt_dir = af3_msa_output_actual_dir / "msas_forChai"
+            # In _run_alphafold3_msa_pipeline method, where it handles Chai-1 PQT conversion
+            source_msas_dir = af3_msa_output_actual_dir / "msas"
+            target_pqt_dir = af3_msa_output_actual_dir / "msas_forChai"
+            
+            # Always attempt PQT conversion during MSA phase
+            logger.info("Attempting A3M to PQT conversion for potential Chai-1 use.")
+            if not source_msas_dir.is_dir():
+                logger.warning(f"AF3 MSA 'msas' directory not found at {source_msas_dir}. Skipping PQT conversion.")
+            else:
+                target_pqt_dir.mkdir(parents=True, exist_ok=True)
+                logger.info(f"Created PQT output directory: {target_pqt_dir}")
                 
-                if not source_msas_dir.is_dir():
-                    logger.warning(f"AF3 MSA 'msas' directory not found at {source_msas_dir}. Skipping PQT conversion.")
+                # We need the Chai-1 SIF just for the conversion tool
+                chai1_sif_path_str = self.config.get("chai1_sif_path")
+                if not chai1_sif_path_str or not Path(chai1_sif_path_str).is_file():
+                    logger.warning("Chai-1 SIF not found. PQT conversion will be skipped, but MSAs will still be available.")
+                    logger.warning("You can provide --chai1_sif_path during the GPU phase to use Chai-1.")
                 else:
-                    target_pqt_dir.mkdir(parents=True, exist_ok=True)
-                    logger.info(f"Created PQT output directory: {target_pqt_dir}")
-                    
                     processed_any_pqt = False
                     for chain_msa_dir in source_msas_dir.iterdir():
                         if chain_msa_dir.is_dir():
@@ -822,8 +828,6 @@ class MSAManager:
                         # --- End of AF3 JSON to Chai FASTA Conversion ---
                     else:
                         logger.warning(f"No .pqt files found in {target_pqt_dir} after attempting conversion for all chains. Skipping Chai FASTA generation.")
-            else:
-                logger.info("Chai-1 SIF not provided or not found. Skipping PQT conversion and Chai FASTA generation.")
             
             # --- Run af3_to_boltz_csv.py script ---
             if self.job_input and self.job_input.sequences:
