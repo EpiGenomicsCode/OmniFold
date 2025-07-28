@@ -122,6 +122,53 @@ omnifold --help
 
 For detailed information on FASTA input formatting, see [docs/fasta.md](docs/fasta.md).
 
+## Two-Phase Prediction Workflow (MSA & GPU)
+
+OmniFold supports splitting the prediction pipeline into two distinct phases, which is highly recommended for running large batches of predictions on an HPC cluster.
+
+*   **Phase 1: MSA Generation (`--msa_only`)**: This phase is computationally intensive but primarily CPU-bound. It generates all necessary Multiple Sequence Alignments (MSAs) and model configuration files. We recommend running this phase on compute nodes with high CPU core counts.
+*   **Phase 2: GPU Prediction (`--gpu_only`)**: This phase performs the actual structure prediction using GPUs. It requires the output from the MSA phase.
+
+This approach allows you to efficiently allocate resources by running the CPU-heavy MSA tasks and the GPU-heavy prediction tasks on different hardware.
+
+### Phase 1: MSA Generation (`--msa_only`)
+
+In this phase, you provide your input file and specify an output directory. The tool will generate all necessary files and then stop.
+
+```bash
+omnifold \
+    --input_file /path/to/your/input.fasta \
+    --output_dir /path/to/your/output_directory \
+    --msa_method alphafold3 \
+    --alphafold3_sif_path /path/to/alphafold3.sif \
+    --alphafold3_model_weights_dir /path/to/af3_weights \
+    --alphafold3_database_dir /path/to/af3_databases \
+    --chai1_sif_path /path/to/chai1.sif \
+    --msa_only
+```
+**Note**: Even if you intend to run Chai-1 in the GPU phase, you must provide the `--chai1_sif_path` during the MSA phase. This is because the Chai-1 container is used to convert the generated MSAs into the required PQT format.
+
+### Phase 2: GPU Prediction (`--gpu_only`)
+
+Once the MSA phase is complete, you can start the GPU phase by pointing to the output directory of the previous step.
+
+```bash
+omnifold \
+    --output_dir /path/to/your/output_directory \
+    --alphafold3_sif_path /path/to/alphafold3.sif \
+    --boltz1_sif_path /path/to/boltz1.sif \
+    --chai1_sif_path /path/to/chai1.sif \
+    --alphafold3_model_weights_dir /path/to/af3_weights \
+    --gpu_only
+```
+
+### HPC Job Submission Tip
+
+On an HPC cluster, it's best to submit the MSA and GPU phases as separate jobs with a dependency. This ensures that the GPU job only starts after the MSA job has successfully completed. For example, with a Slurm scheduler, you could do something like this:
+
+1.  Submit the MSA job: `sbatch --job-name=msa_job msa_script.sh`
+2.  Submit the GPU job with a dependency: `sbatch --job-name=gpu_job --dependency=afterok:<msa_job_id> gpu_script.sh`
+
 ## Output Structure
 
 The application will create the specified output directory. Inside this directory, you will typically find:
@@ -130,6 +177,7 @@ The application will create the specified output directory. Inside this director
 *   Configuration files generated for each model.
 *   Log files (`ensemble_prediction.log`, `alphafold3_run.log`, `boltz_run.log`, `chai1_run.log`).
 *   If MSAs were generated, intermediate MSA files may also be present in a subdirectory (e.g., `msa_intermediate_files`, `msas_forChai`).
+*   `omnifold_job.json`: A state file that contains the paths to all the generated configuration files. This file is used to link the MSA and GPU phases.
 
 ## HTML Report Generation
 
