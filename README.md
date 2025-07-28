@@ -12,6 +12,7 @@ This command-line application simplifies running ensemble protein structure pred
     *   Additionally, if Chai-1 is being run, the AlphaFold3 internal a3m states are extracted to suit Chai-1's PQT format.
     *   When using the `colabfold` MSA method, the API is queried only once. The resulting unpaired and paired MSAs are passed to the AlphaFold3 pipeline, while Boltz and Chai-1 use their native ColabFold integrations with the same cached MSA files.
 *   **Parallel Execution:** Orchestrates predictions with AlphaFold3, Boltz-2, and Chai-1, potentially in parallel on different GPUs.
+*   **Two-Phase Execution:** Optionally split the pipeline into an MSA/config generation phase (CPU-intensive) and a model prediction phase (GPU-intensive) for efficient resource allocation on HPC clusters.
 *   **Containerized Runs:** Executes models reliably within their Singularity containers.
 *   **Organized Output:** Saves the native outputs from each model into a structured output directory.
 *   **Automated Reporting:** Automatically generates a comprehensive, interactive HTML report (`OmniFold_Report.zip`) comparing all model outputs, including metrics like `ipSAE` and `pDockQ`.
