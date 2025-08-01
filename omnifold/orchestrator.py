@@ -329,14 +329,17 @@ class Orchestrator:
         # --- Generate Final HTML Report ---
         # Generate report if at least one model succeeded
         any_success = any(res[0] == 0 for res in results.values())
-        if any_success:
-            try:
-                logger.info("Generating final HTML report for successful models...")
-                run_report_generation(Path(self.output_dir))
-            except Exception as e:
-                logger.error(f"Failed to generate final HTML report: {e}", exc_info=True)
+        if self.config.get("generate_report", True):
+            if any_success:
+                try:
+                    logger.info("Generating final HTML report for successful models...")
+                    run_report_generation(Path(self.output_dir))
+                except Exception as e:
+                    logger.error(f"Failed to generate final HTML report: {e}", exc_info=True)
+            else:
+                logger.warning("Skipping final report generation as all model predictions failed.")
         else:
-            logger.warning("Skipping final report generation as all model predictions failed.")
+            logger.info("--no_report flag set; skipping report generation.")
 
         # The overall pipeline success depends on ALL models succeeding.
         # This remains unchanged to correctly signal job status.

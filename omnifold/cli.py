@@ -2,6 +2,7 @@ import argparse
 import os
 import logging
 import sys
+from pathlib import Path
 
 from .orchestrator import Orchestrator
 
@@ -68,8 +69,12 @@ def main():
     mut_group.add_argument(
         "--gpu_only",
         action="store_true",
-        help="Run only the model execution (GPU) phase. This requires providing an --input_dir that contains "
-             "the results of a previous --msa_only run."
+        help="Run only the model execution (GPU) phase. Provide an --output_dir that contains the results of a previous --msa_only run."
+    )
+    mut_group.add_argument(
+        "--report_only",
+        action="store_true",
+        help="Generate/repair the HTML report only. Provide --output_dir pointing to a completed job directory."
     )
 
     container_group = parser.add_argument_group('Singularity Container Paths')
@@ -134,6 +139,12 @@ def main():
     )
 
     exec_group = parser.add_argument_group('Execution Control')
+    exec_group.add_argument(
+        "--no_report",
+        action="store_true",
+        help="Skip HTML report generation even if models succeed. Useful for debugging or when running on constrained filesystems."
+    )
+
     exec_group.add_argument(
         "--sequential",
         action="store_true",
@@ -338,8 +349,22 @@ def main():
     args = parser.parse_args()
     logger = setup_logging(args.log_level)
 
+    # Shortcut for report-only mode
+    if args.report_only:
+        from omnifold.html_report.generate_report import run_report_generation
+        try:
+            run_report_generation(Path(os.path.abspath(args.output_dir)))
+            logger.info("Report generation completed successfully.")
+            return
+        except Exception as e:
+            logger.error(f"Report generation failed: {e}", exc_info=True)
+            sys.exit(1)
+
     # --- Validation for new flags ---
-    if args.gpu_only:
+    if args.report_only:
+        if not args.output_dir:
+            parser.error("--output_dir is required for --report_only mode.")
+    elif args.gpu_only:
         if not args.output_dir:
             parser.error("--output_dir pointing to a previous --msa_only run is required for --gpu_only mode.")
         if not os.path.isdir(args.output_dir):
@@ -428,6 +453,7 @@ def main():
         
         "run_sequentially": args.sequential,
         "default_seed": args.default_seed,
+        "generate_report": not args.no_report,
         "log_level": args.log_level.upper(),
         
         "alphafold_database_root_path": os.path.abspath(args.alphafold3_database_dir) if args.alphafold3_database_dir else None,
