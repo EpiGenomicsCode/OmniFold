@@ -1,5 +1,11 @@
 # OmniFold
 
+## Protein structure prediction and design for high-throughput computing
+#### Vinay Saji Mathew, Gretta D. Kellogg,  & William KM Lai
+Recent advances in structural biology and machines learning have resulted in a revolution in molecular biology. This revolution is driven by protein structure prediction and design tools such as Alphafold3, Chai-1, and Boltz-2 which are now able to accurately model protein structures as well as predict protein-complex formation with a variety of substrates at atomic resolution (i.e., DNA, RNA, small ligands, post-translational modifications). The impact of these protein-structure prediction algorithms has been matched by the emergence of in silico protein design platforms (RFdiffusion), which now promise to revolutionize synthetic biology and novel disease therapeutics. Despite their potential to transform molecular biology, the adoption of these algorithms is hindered in part, not only by their high computational requirements, but also by the difficulty in deploying these algorithms on available systems. To help address these barriers, we developed containerized solutions for AlphaFold3, Chai-1, Boltz-2, and RFdiffusion, optimized across a variety of computational architectures (e.g., x86 and ARM). Additionally, we present OmniFold, an optimized wrapper-platform with automatic QC report generation that enables AlphaFold3, Chai-1, and Boltz-2 to perform simultaneously while more efficiently utilizing GPU systems. Precompiled containers and their definition files are available as open source through Sylabs and GitHub. We hope that these containers and repos will help to facilitate reproducibility, accessibility, and accelerate scientific discovery.
+
+doi: https://doi.org/10.1101/2025.07.18.665594
+
 ## Overview
 
 This command-line application simplifies running ensemble protein structure predictions using **AlphaFold3**, **Boltz-2**, and **Chai-1** on High-Performance Computing (HPC) clusters. 
