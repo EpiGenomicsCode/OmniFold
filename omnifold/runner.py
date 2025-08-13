@@ -172,8 +172,8 @@ class Runner:
             
             # Bind modified chai1 files for development
             modified_chai_files = {
-                "omnifold/chai1_modifications/rank.py": "/usr/local/lib/python3.10/dist-packages/chai_lab/ranking/rank.py",
-                "omnifold/chai1_modifications/chai1.py": "/usr/local/lib/python3.10/dist-packages/chai_lab/chai1.py",
+                (Path(__file__).parent / "chai1_modifications/rank.py").resolve(): "/usr/local/lib/python3.10/dist-packages/chai_lab/ranking/rank.py",
+                (Path(__file__).parent / "chai1_modifications/chai1.py").resolve(): "/usr/local/lib/python3.10/dist-packages/chai_lab/chai1.py",
             }
             for host_path, container_path in modified_chai_files.items():
                 abs_host_path = os.path.abspath(host_path)

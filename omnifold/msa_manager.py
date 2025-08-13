@@ -601,9 +601,11 @@ class MSAManager:
 
         cmd = ["singularity", "run", "--nv"] 
 
+        # Define the base path for our custom scripts relative to this file's location
+        base_script_path = Path(__file__).parent
+
         # 1. pipeline.py
-        custom_pipeline_py_host_path_str = "omnifold/singularity_af3/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/pipeline.py"
-        custom_pipeline_py_host_path = Path(custom_pipeline_py_host_path_str)
+        custom_pipeline_py_host_path = base_script_path / "singularity_af3/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/pipeline.py"
         container_pipeline_py_path = "/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/pipeline.py"
         if custom_pipeline_py_host_path.is_file():
             cmd.extend(["-B", f"{custom_pipeline_py_host_path.resolve()}:{container_pipeline_py_path}:ro"])
@@ -612,8 +614,7 @@ class MSAManager:
             logger.warning(f"Custom pipeline.py not found at {custom_pipeline_py_host_path.resolve()}. Using SIF default.")
 
         # 2. run_alphafold.py
-        custom_run_alphafold_py_host_path_str = "omnifold/singularity_af3/alphafold3/run_alphafold.py"
-        custom_run_alphafold_py_host_path = Path(custom_run_alphafold_py_host_path_str)
+        custom_run_alphafold_py_host_path = base_script_path / "singularity_af3/alphafold3/run_alphafold.py"
         container_run_alphafold_py_path = "/alphafold3/run_alphafold.py"
         if custom_run_alphafold_py_host_path.is_file():
             cmd.extend(["-B", f"{custom_run_alphafold_py_host_path.resolve()}:{container_run_alphafold_py_path}:ro"])
@@ -622,8 +623,7 @@ class MSAManager:
             logger.warning(f"Custom run_alphafold.py not found at {custom_run_alphafold_py_host_path.resolve()}. Using SIF default.")
 
         # 3. templates.py
-        custom_templates_py_host_path_str = "omnifold/singularity_af3/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/templates.py"
-        custom_templates_py_host_path = Path(custom_templates_py_host_path_str)
+        custom_templates_py_host_path = base_script_path / "singularity_af3/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/templates.py"
         container_templates_py_path = "/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/templates.py"
         if custom_templates_py_host_path.is_file():
             cmd.extend(["-B", f"{custom_templates_py_host_path.resolve()}:{container_templates_py_path}:ro"])
@@ -632,8 +632,7 @@ class MSAManager:
             logger.warning(f"Custom templates.py not found at {custom_templates_py_host_path.resolve()}. Using SIF default.")
 
         # 4. tools/hmmsearch.py
-        custom_hmmsearch_py_host_path_str = "omnifold/singularity_af3/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/tools/hmmsearch.py"
-        custom_hmmsearch_py_host_path = Path(custom_hmmsearch_py_host_path_str)
+        custom_hmmsearch_py_host_path = base_script_path / "singularity_af3/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/tools/hmmsearch.py"
         container_hmmsearch_py_path = "/alphafold3_venv/lib/python3.11/site-packages/alphafold3/data/tools/hmmsearch.py"
         if custom_hmmsearch_py_host_path.is_file():
             cmd.extend(["-B", f"{custom_hmmsearch_py_host_path.resolve()}:{container_hmmsearch_py_path}:ro"])
